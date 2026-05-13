@@ -615,7 +615,22 @@
   </div>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
+// ── FIREBASE ─────────────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyDCdZBbHEY-pmEfpwBDna-H0LcFAwN1uiU",
+  authDomain: "pt-tracker-92e6f.firebaseapp.com",
+  projectId: "pt-tracker-92e6f",
+  storageBucket: "pt-tracker-92e6f.firebasestorage.app",
+  messagingSenderId: "193403315559",
+  appId: "1:193403315559:web:0ebd3e3b39d2d04a2c3bc2"
+};
+firebase.initializeApp(firebaseConfig);
+const firestore = firebase.firestore();
+const DOC_REF = firestore.collection('ptdata').doc('main');
+
 // ── DB ──────────────────────────────────────────────────────────────────────
 const DEFAULT_LIBRARY = [
   ['Bench Press','Chest','weight'],['Incline Bench Press','Chest','weight'],['Cable Fly','Chest','weight'],['Dumbbell Fly','Chest','weight'],['Push-up','Chest','bodyweight'],
@@ -650,7 +665,7 @@ if (!db.weightLogs) db.weightLogs = [];
 
 // ── SAVE / LOAD ───────────────────────────────────────────────────────────────
 let syncTimeout = null;
-let pendingSync = false;
+let pendingOfflineSync = false;
 
 function showSyncStatus(status, msg) {
   let el = document.getElementById('sync-indicator');
@@ -663,15 +678,62 @@ function showSyncStatus(status, msg) {
 
 function save() {
   localStorage.setItem('pt_db_v2', JSON.stringify(db));
-  showSyncStatus('saved', 'Saved');
-  if (syncTimeout) clearTimeout(syncTimeout);
-  syncTimeout = setTimeout(()=>showSyncStatus('idle',''), 2000);
+  showSyncStatus('saving', 'Syncing...');
+  DOC_REF.set(db)
+    .then(() => {
+      pendingOfflineSync = false;
+      showSyncStatus('saved', 'Saved');
+      if (syncTimeout) clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
+    })
+    .catch(() => {
+      pendingOfflineSync = true;
+      showSyncStatus('offline', 'Saved offline');
+      if (syncTimeout) clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 3000);
+    });
 }
 
 function loadData() {
-  // Just load from localStorage
-  showSyncStatus('idle', '');
+  showSyncStatus('saving', 'Loading...');
+  DOC_REF.get()
+    .then(doc => {
+      if (doc.exists) {
+        const data = doc.data();
+        db = data;
+        if (!db.plans) db.plans = [];
+        if (!db.weightLogs) db.weightLogs = [];
+        localStorage.setItem('pt_db_v2', JSON.stringify(db));
+        renderDash();
+      }
+      showSyncStatus('saved', 'Synced');
+      if (syncTimeout) clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
+    })
+    .catch(() => {
+      showSyncStatus('offline', 'Offline mode');
+      if (syncTimeout) clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 3000);
+    });
 }
+
+window.addEventListener('online', () => {
+  if (pendingOfflineSync) {
+    showSyncStatus('saving', 'Back online, syncing...');
+    DOC_REF.set(db)
+      .then(() => {
+        pendingOfflineSync = false;
+        showSyncStatus('saved', 'Synced');
+        if (syncTimeout) clearTimeout(syncTimeout);
+        syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
+      })
+      .catch(() => {
+        showSyncStatus('offline', 'Sync failed');
+        if (syncTimeout) clearTimeout(syncTimeout);
+        syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 3000);
+      });
+  }
+});
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 function fmtDate(s) { if(!s) return ''; const d = new Date(s+'T12:00:00'); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
@@ -2342,6 +2404,7 @@ function importData(e) {
 // ── INIT ──────────────────────────────────────────────────────────────────────
 renderDash();
 checkSharedView();
+loadData();
 </script>
 </body>
 </html>
