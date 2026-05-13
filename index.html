@@ -2496,11 +2496,11 @@ function mobileRefresh() {
       else if (page === 'library') renderLibrary();
     }
     showSyncStatus('saved', 'Synced');
-    setTimeout(function() { showSyncStatus('idle',''); }, 2000);
+    btn.classList.remove('syncing');
+    setTimeout(function() { showSyncStatus('idle',''); }, 1500);
   }).catch(function() {
     showSyncStatus('offline', 'Offline');
-  }).finally(function() {
-    setTimeout(function() { btn.classList.remove('syncing'); }, 1000);
+    btn.classList.remove('syncing');
   });
 }
 
