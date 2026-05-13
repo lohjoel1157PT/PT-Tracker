@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PT Tracker">
+  <meta name="theme-color" content="#0d0d0f">
+  <link rel="manifest" href="manifest.json">
   <title>PT Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
@@ -121,7 +126,7 @@
 
     /* Pull-to-refresh indicator */
     #ptr-indicator {
-      position: fixed; top: 0; left: 50%;
+      position: fixed; top: env(safe-area-inset-top, 0px); left: 50%;
       transform: translate(-50%, -56px);
       width: 40px; height: 40px;
       background: var(--surface2);
@@ -150,6 +155,7 @@
       .main {
         margin-left: 0;
         padding: 20px 16px;
+        padding-top: calc(20px + env(safe-area-inset-top));
         padding-bottom: calc(90px + env(safe-area-inset-bottom));
         overflow-x: hidden;
       }
