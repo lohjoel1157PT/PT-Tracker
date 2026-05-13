@@ -265,6 +265,17 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
       <span class="nav-label">Exercise Library</span>
     </button>
+    <div style="margin-top:auto;padding:16px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-secondary btn-sm" style="width:100%;justify-content:center;" onclick="exportData()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export Data
+      </button>
+      <label class="btn btn-secondary btn-sm" style="width:100%;justify-content:center;cursor:pointer;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Import Data
+        <input type="file" accept=".json" style="display:none;" onchange="importData(event)">
+      </label>
+    </div>
   </nav>
 
   <!-- MOBILE BOTTOM NAV -->
@@ -604,23 +615,7 @@
   </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-// ── FIREBASE ─────────────────────────────────────────────────────────────────
-const firebaseConfig = {
-  apiKey: "AIzaSyDCdZBbHEY-pmEfpwBDna-H0LcFAwN1uiU",
-  authDomain: "pt-tracker-92e6f.firebaseapp.com",
-  projectId: "pt-tracker-92e6f",
-  storageBucket: "pt-tracker-92e6f.firebasestorage.app",
-  messagingSenderId: "193403315559",
-  appId: "1:193403315559:web:0ebd3e3b39d2d04a2c3bc2",
-  measurementId: "G-MEQV0RNC0S"
-};
-firebase.initializeApp(firebaseConfig);
-const firestore = firebase.firestore();
-const DOC_REF = firestore.collection('ptdata').doc('main');
-
 // ── DB ──────────────────────────────────────────────────────────────────────
 const DEFAULT_LIBRARY = [
   ['Bench Press','Chest','weight'],['Incline Bench Press','Chest','weight'],['Cable Fly','Chest','weight'],['Dumbbell Fly','Chest','weight'],['Push-up','Chest','bodyweight'],
@@ -635,6 +630,7 @@ const DEFAULT_LIBRARY = [
 
 function initDB() {
   try { const r = localStorage.getItem('pt_db_v2'); if (r) return JSON.parse(r); } catch(e) {}
+  // migrate from old db
   try {
     const old = localStorage.getItem('pt_db');
     if (old) {
@@ -654,7 +650,7 @@ if (!db.weightLogs) db.weightLogs = [];
 
 // ── SAVE / LOAD ───────────────────────────────────────────────────────────────
 let syncTimeout = null;
-let pendingOfflineSync = false;
+let pendingSync = false;
 
 function showSyncStatus(status, msg) {
   let el = document.getElementById('sync-indicator');
@@ -667,63 +663,15 @@ function showSyncStatus(status, msg) {
 
 function save() {
   localStorage.setItem('pt_db_v2', JSON.stringify(db));
-  showSyncStatus('saving', 'Syncing...');
-  DOC_REF.set(db)
-    .then(() => {
-      pendingOfflineSync = false;
-      showSyncStatus('saved', 'Saved');
-      if (syncTimeout) clearTimeout(syncTimeout);
-      syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
-    })
-    .catch(() => {
-      pendingOfflineSync = true;
-      showSyncStatus('offline', 'Saved offline');
-      if (syncTimeout) clearTimeout(syncTimeout);
-      syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 3000);
-    });
+  showSyncStatus('saved', 'Saved');
+  if (syncTimeout) clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(()=>showSyncStatus('idle',''), 2000);
 }
 
 function loadData() {
-  showSyncStatus('saving', 'Loading...');
-  DOC_REF.get()
-    .then(doc => {
-      if (doc.exists) {
-        const data = doc.data();
-        db = data;
-        if (!db.plans) db.plans = [];
-        if (!db.weightLogs) db.weightLogs = [];
-        localStorage.setItem('pt_db_v2', JSON.stringify(db));
-        renderDash();
-      }
-      showSyncStatus('saved', 'Synced');
-      if (syncTimeout) clearTimeout(syncTimeout);
-      syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
-    })
-    .catch(() => {
-      showSyncStatus('offline', 'Offline mode');
-      if (syncTimeout) clearTimeout(syncTimeout);
-      syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 3000);
-    });
+  // Just load from localStorage
+  showSyncStatus('idle', '');
 }
-
-// Auto-sync when internet comes back online
-window.addEventListener('online', () => {
-  if (pendingOfflineSync) {
-    showSyncStatus('saving', 'Back online, syncing...');
-    DOC_REF.set(db)
-      .then(() => {
-        pendingOfflineSync = false;
-        showSyncStatus('saved', 'Synced');
-        if (syncTimeout) clearTimeout(syncTimeout);
-        syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
-      })
-      .catch(() => {
-        showSyncStatus('offline', 'Sync failed');
-        if (syncTimeout) clearTimeout(syncTimeout);
-        syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 3000);
-      });
-  }
-});
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 function fmtDate(s) { if(!s) return ''; const d = new Date(s+'T12:00:00'); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
@@ -2360,10 +2308,40 @@ function checkSharedView() {
   } catch(e) { return false; }
 }
 
+// ── EXPORT / IMPORT ───────────────────────────────────────────────────────────
+function exportData() {
+  const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pt-tracker-backup-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      if (!imported.clients || !imported.sessions) { alert('Invalid backup file.'); return; }
+      if (!confirm('This will replace ALL current data with the backup. Continue?')) return;
+      db = imported;
+      if (!db.plans) db.plans = [];
+      if (!db.weightLogs) db.weightLogs = [];
+      localStorage.setItem('pt_db_v2', JSON.stringify(db));
+      nav('dashboard');
+      alert('Data imported successfully!');
+    } catch(err) { alert('Could not read file. Make sure it is a valid PT Tracker backup.'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 renderDash();
 checkSharedView();
-loadData();
 </script>
 </body>
 </html>
