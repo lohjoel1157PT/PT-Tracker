@@ -124,22 +124,30 @@
     .rpe-high { color: var(--danger); }
     .bottom-nav { display: none; }
 
-    /* Pull-to-refresh indicator */
-    #ptr-indicator {
-      position: fixed; top: env(safe-area-inset-top, 0px); left: 50%;
-      transform: translate(-50%, -56px);
-      width: 40px; height: 40px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      z-index: 400; opacity: 0; pointer-events: none;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-      transition: transform 0.25s ease, opacity 0.25s ease;
+    /* Mobile refresh button */
+    #mobile-refresh {
+      display: none;
     }
-    #ptr-indicator svg { width: 18px; height: 18px; color: var(--accent); transition: transform 0.1s; }
-    #ptr-indicator.ptr-spinning svg { animation: ptr-spin 0.7s linear infinite; }
-    @keyframes ptr-spin { to { transform: rotate(360deg); } }
+    @media(max-width:700px) {
+      #mobile-refresh {
+        display: flex; align-items: center; justify-content: center;
+        position: fixed;
+        top: calc(12px + env(safe-area-inset-top));
+        right: 16px;
+        width: 36px; height: 36px;
+        background: rgba(22,22,26,0.85);
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--border);
+        border-radius: 50%;
+        z-index: 200;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      }
+      #mobile-refresh svg { width: 16px; height: 16px; color: var(--muted); transition: color 0.2s; }
+      #mobile-refresh:active svg { color: var(--accent); }
+      #mobile-refresh.spinning svg { animation: refresh-spin 0.7s linear infinite; color: var(--accent); }
+      @keyframes refresh-spin { to { transform: rotate(360deg); } }
+    }
 
     /* Global touch improvements */
     * { -webkit-tap-highlight-color: transparent; }
@@ -149,20 +157,15 @@
     .nav-item:active, .bottom-nav-item:active { opacity: 0.7; }
 
     @media(max-width:700px){
-      /* Layout — make .main the scroll container so iOS touch events fire reliably */
+      /* Layout */
       .sidebar { display: none; }
-      html, body { height: 100%; overflow: hidden; }
-      .app { height: 100%; overflow: hidden; }
+      body { overflow-x: hidden; }
       .main {
         margin-left: 0;
         padding: 20px 16px;
         padding-top: calc(20px + env(safe-area-inset-top));
         padding-bottom: calc(90px + env(safe-area-inset-bottom));
-        overflow-y: auto;
         overflow-x: hidden;
-        -webkit-overflow-scrolling: touch;
-        height: 100%;
-        position: relative;
       }
 
       /* Bottom nav — floating pill */
@@ -2486,75 +2489,25 @@ function importData(e) {
   e.target.value = '';
 }
 
-// ── PULL TO REFRESH ───────────────────────────────────────────────────────────
-(function() {
-  var startY = 0, pulling = false, refreshing = false;
-  var ind = document.getElementById('ptr-indicator');
-  var mainEl = document.querySelector('.main');
-  var threshold = 75;
 
-  if (!mainEl) return;
-
-  function reset() {
-    ind.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
-    ind.style.transform = 'translate(-50%, -56px)';
-    ind.style.opacity = '0';
-  }
-
-  mainEl.addEventListener('touchstart', function(e) {
-    startY = e.touches[0].clientY;
-    pulling = false;
-  }, { passive: true });
-
-  mainEl.addEventListener('touchmove', function(e) {
-    if (refreshing) return;
-    if (mainEl.scrollTop > 8) { pulling = false; return; }
-    var dy = e.touches[0].clientY - startY;
-    if (dy < 8) return;
-    pulling = true;
-    var pull = Math.min(dy * 0.4, 60);
-    var progress = Math.min(dy / threshold, 1);
-    ind.style.transition = 'none';
-    ind.style.transform = 'translate(-50%, ' + (pull - 56) + 'px)';
-    ind.style.opacity = progress;
-    ind.querySelector('svg').style.transform = 'rotate(' + (progress * 200) + 'deg)';
-  }, { passive: true });
-
-  function onRelease() {
-    if (!pulling) return;
-    pulling = false;
-    var m = ind.style.transform.match(/,\s*([-\d.]+)px/);
-    var y = m ? parseFloat(m[1]) : -56;
-    if (y > 2 && !refreshing) {
-      refreshing = true;
-      ind.classList.add('ptr-spinning');
-      ind.querySelector('svg').style.transform = '';
-      ind.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
-      ind.style.transform = 'translate(-50%, 14px)';
-      ind.style.opacity = '1';
-      loadData();
-      setTimeout(function() {
-        reset();
-        setTimeout(function() { ind.classList.remove('ptr-spinning'); refreshing = false; }, 300);
-      }, 1500);
-    } else {
-      reset();
-    }
-  }
-
-  mainEl.addEventListener('touchend', onRelease, { passive: true });
-  mainEl.addEventListener('touchcancel', function() { pulling = false; reset(); }, { passive: true });
-})();
+// ── MOBILE REFRESH ────────────────────────────────────────────────────────────
+function mobileRefresh() {
+  var btn = document.getElementById('mobile-refresh');
+  if (!btn || btn.classList.contains('spinning')) return;
+  btn.classList.add('spinning');
+  loadData();
+  setTimeout(function() { btn.classList.remove('spinning'); }, 1500);
+}
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 renderDash();
 checkSharedView();
 loadData();
 </script>
-<div id="ptr-indicator">
+<button id="mobile-refresh" onclick="mobileRefresh()" aria-label="Refresh">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
     <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
   </svg>
-</div>
+</button>
 </body>
 </html>
