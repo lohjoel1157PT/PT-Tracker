@@ -124,30 +124,10 @@
     .rpe-high { color: var(--danger); }
     .bottom-nav { display: none; }
 
-    /* Mobile refresh button */
-    #mobile-refresh {
-      display: none;
-    }
-    @media(max-width:700px) {
-      #mobile-refresh {
-        display: flex; align-items: center; justify-content: center;
-        position: fixed;
-        top: calc(12px + env(safe-area-inset-top));
-        right: 16px;
-        width: 36px; height: 36px;
-        background: rgba(22,22,26,0.85);
-        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-        border: 1px solid var(--border);
-        border-radius: 50%;
-        z-index: 200;
-        cursor: pointer;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-      }
-      #mobile-refresh svg { width: 16px; height: 16px; color: var(--muted); transition: color 0.2s; }
-      #mobile-refresh:active svg { color: var(--accent); }
-      #mobile-refresh.spinning svg { animation: refresh-spin 0.7s linear infinite; color: var(--accent); }
-      @keyframes refresh-spin { to { transform: rotate(360deg); } }
-    }
+    /* Sync nav item spinning state */
+    @keyframes refresh-spin { to { transform: rotate(360deg); } }
+    .bottom-nav-item.syncing svg { animation: refresh-spin 0.7s linear infinite; }
+    .bottom-nav-item.syncing { color: var(--accent); }
 
     /* Global touch improvements */
     * { -webkit-tap-highlight-color: transparent; }
@@ -387,6 +367,10 @@
     <button class="bottom-nav-item" data-page="progress" onclick="nav('progress')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Progress
+    </button>
+    <button class="bottom-nav-item" id="mobile-refresh" onclick="mobileRefresh()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+      Sync
     </button>
   </nav>
 
@@ -2493,10 +2477,31 @@ function importData(e) {
 // ── MOBILE REFRESH ────────────────────────────────────────────────────────────
 function mobileRefresh() {
   var btn = document.getElementById('mobile-refresh');
-  if (!btn || btn.classList.contains('spinning')) return;
-  btn.classList.add('spinning');
-  loadData();
-  setTimeout(function() { btn.classList.remove('spinning'); }, 1500);
+  if (!btn || btn.classList.contains('syncing')) return;
+  btn.classList.add('syncing');
+  showSyncStatus('saving', 'Syncing...');
+  DOC_REF.get().then(function(doc) {
+    if (doc.exists) {
+      db = doc.data();
+      if (!db.plans) db.plans = [];
+      if (!db.weightLogs) db.weightLogs = [];
+      localStorage.setItem('pt_db_v2', JSON.stringify(db));
+      var active = document.querySelector('.page.active');
+      var page = active ? active.id.replace('page-', '') : 'dashboard';
+      if (page === 'dashboard') renderDash();
+      else if (page === 'clients') renderClients();
+      else if (page === 'log') initLog();
+      else if (page === 'plan') initPlan();
+      else if (page === 'progress') initProgress();
+      else if (page === 'library') renderLibrary();
+    }
+    showSyncStatus('saved', 'Synced');
+    setTimeout(function() { showSyncStatus('idle',''); }, 2000);
+  }).catch(function() {
+    showSyncStatus('offline', 'Offline');
+  }).finally(function() {
+    setTimeout(function() { btn.classList.remove('syncing'); }, 1000);
+  });
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
@@ -2504,10 +2509,5 @@ renderDash();
 checkSharedView();
 loadData();
 </script>
-<button id="mobile-refresh" onclick="mobileRefresh()" aria-label="Refresh">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-  </svg>
-</button>
 </body>
 </html>
