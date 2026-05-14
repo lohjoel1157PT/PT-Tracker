@@ -735,6 +735,23 @@ let db = initDB();
 if (!db.plans) db.plans = [];
 if (!db.weightLogs) db.weightLogs = [];
 
+// ── FIRESTORE SERIALIZATION (Firestore doesn't support nested arrays) ─────────
+function toFirestore(data) {
+  const d = JSON.parse(JSON.stringify(data));
+  (d.sessions||[]).forEach(s => {
+    s.exercises = (s.exercises||[]).map(e => Array.isArray(e) ? {_ss:true,ex:e} : e);
+    (s.warmup||[]).forEach(w => { if (Array.isArray(w)) w = {_ss:true,ex:w}; });
+  });
+  return d;
+}
+function fromFirestore(data) {
+  const d = JSON.parse(JSON.stringify(data));
+  (d.sessions||[]).forEach(s => {
+    s.exercises = (s.exercises||[]).map(e => (e && e._ss) ? e.ex : e);
+  });
+  return d;
+}
+
 // ── SAVE / LOAD ───────────────────────────────────────────────────────────────
 let syncTimeout = null;
 let pendingOfflineSync = false;
@@ -751,7 +768,7 @@ function showSyncStatus(status, msg) {
 function save() {
   localStorage.setItem('pt_db_v2', JSON.stringify(db));
   showSyncStatus('saving', 'Syncing...');
-  DOC_REF.set(db)
+  DOC_REF.set(toFirestore(db))
     .then(() => {
       pendingOfflineSync = false;
       showSyncStatus('saved', 'Saved');
@@ -771,8 +788,7 @@ function loadData() {
   DOC_REF.get()
     .then(doc => {
       if (doc.exists) {
-        const data = doc.data();
-        db = data;
+        db = fromFirestore(doc.data());
         if (!db.plans) db.plans = [];
         if (!db.weightLogs) db.weightLogs = [];
         localStorage.setItem('pt_db_v2', JSON.stringify(db));
@@ -792,7 +808,7 @@ function loadData() {
 window.addEventListener('online', () => {
   if (pendingOfflineSync) {
     showSyncStatus('saving', 'Back online, syncing...');
-    DOC_REF.set(db)
+    DOC_REF.set(toFirestore(db))
       .then(() => {
         pendingOfflineSync = false;
         showSyncStatus('saved', 'Synced');
@@ -2482,7 +2498,7 @@ function mobileRefresh() {
   showSyncStatus('saving', 'Syncing...');
   DOC_REF.get().then(function(doc) {
     if (doc.exists) {
-      db = doc.data();
+      db = fromFirestore(doc.data());
       if (!db.plans) db.plans = [];
       if (!db.weightLogs) db.weightLogs = [];
       localStorage.setItem('pt_db_v2', JSON.stringify(db));
