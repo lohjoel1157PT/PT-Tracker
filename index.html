@@ -740,7 +740,10 @@ function toFirestore(data) {
   const d = JSON.parse(JSON.stringify(data));
   (d.sessions||[]).forEach(s => {
     s.exercises = (s.exercises||[]).map(e => Array.isArray(e) ? {_ss:true,ex:e} : e);
-    (s.warmup||[]).forEach(w => { if (Array.isArray(w)) w = {_ss:true,ex:w}; });
+    s.warmup = (s.warmup||[]).map(w => Array.isArray(w) ? {_ss:true,ex:w} : w);
+  });
+  (d.templates||[]).forEach(t => {
+    t.exercises = (t.exercises||[]).map(e => Array.isArray(e) ? {_ss:true,ex:e} : e);
   });
   return d;
 }
@@ -748,6 +751,10 @@ function fromFirestore(data) {
   const d = JSON.parse(JSON.stringify(data));
   (d.sessions||[]).forEach(s => {
     s.exercises = (s.exercises||[]).map(e => (e && e._ss) ? e.ex : e);
+    s.warmup = (s.warmup||[]).map(w => (w && w._ss) ? w.ex : w);
+  });
+  (d.templates||[]).forEach(t => {
+    t.exercises = (t.exercises||[]).map(e => (e && e._ss) ? e.ex : e);
   });
   return d;
 }
@@ -791,6 +798,7 @@ function loadData() {
         db = fromFirestore(doc.data());
         if (!db.plans) db.plans = [];
         if (!db.weightLogs) db.weightLogs = [];
+        if (!db.templates) db.templates = [];
         localStorage.setItem('pt_db_v2', JSON.stringify(db));
         renderDash();
       }
