@@ -1384,11 +1384,13 @@ function loadTemplate(clientId) {
     div.dataset.clientId = clientId;
 
     div.innerHTML = `
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
         <div class="ac-wrap" style="flex:1;">
           <input type="text" id="en-${id}" value="${ex.name}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId}')">
           <div class="ac-list" id="ac-${id}"></div>
         </div>
+        <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.ex-block'),-1)" title="Move up"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+        <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.ex-block'),1)" title="Move down"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button>
         <button class="icon-btn" onclick="this.closest('.ex-block').remove()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
@@ -1448,11 +1450,13 @@ function loadTemplate(clientId) {
       div.dataset.section = 'warmup';
       div.innerHTML = `
         <div class="warmup-label">Warm-Up</div>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
           <div class="ac-wrap" style="flex:1;">
             <input type="text" id="en-${id}" value="${ex.name}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">
             <div class="ac-list" id="ac-${id}"></div>
           </div>
+          <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.ex-block'),-1)" title="Move up"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+          <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.ex-block'),1)" title="Move down"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button>
           <button class="icon-btn" onclick="this.closest('.ex-block').remove()">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
@@ -1639,6 +1643,18 @@ function getExType(name) {
   return lib ? lib.type : 'weight';
 }
 
+function moveElement(el, dir) {
+  if (!el) return;
+  const parent = el.parentElement;
+  if (dir < 0) {
+    const prev = el.previousElementSibling;
+    if (prev) parent.insertBefore(el, prev);
+  } else {
+    const next = el.nextElementSibling;
+    if (next) parent.insertBefore(next, el);
+  }
+}
+
 function addExBlock(section, clientId) {
   const id = exIdx++;
   let container;
@@ -1658,11 +1674,13 @@ function addExBlock(section, clientId) {
 
   div.innerHTML = `
     ${section==='warmup' ? '<div class="warmup-label">Warm-Up</div>' : ''}
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
       <div class="ac-wrap" style="flex:1;">
         <input type="text" id="en-${id}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')">
         <div class="ac-list" id="ac-${id}"></div>
       </div>
+      <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.ex-block'),-1)" title="Move up"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+      <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.ex-block'),1)" title="Move down"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button>
       <button class="icon-btn" onclick="this.closest('.ex-block').remove()" title="Remove">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
@@ -1700,8 +1718,10 @@ function createSupersetWrapper(gid, container) {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" style="flex-shrink:0;"><circle cx="7" cy="12" r="5"/><circle cx="17" cy="12" r="5"/></svg>
         <span style="font-size:11px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Superset</span>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;">
+      <div style="display:flex;gap:6px;align-items:center;">
         <button style="font-size:12px;color:var(--green);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;font-weight:500;" onclick="addToSupersetGroup(this)">+ Add exercise</button>
+        <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.ss-wrapper'),-1)" title="Move up"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+        <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.ss-wrapper'),1)" title="Move down"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button>
         <button class="icon-btn" style="width:22px;height:22px;" onclick="this.closest('.ss-wrapper').remove()">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
@@ -1723,11 +1743,13 @@ function addExBlockIntoSuperset(gid, clientId) {
   div.dataset.section = 'main';
   if (clientId) div.dataset.clientId = clientId;
   div.innerHTML = `
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
       <div class="ac-wrap" style="flex:1;">
         <input type="text" id="en-${id}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')">
         <div class="ac-list" id="ac-${id}"></div>
       </div>
+      <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.ex-block'),-1)" title="Move up"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+      <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.ex-block'),1)" title="Move down"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button>
       <button class="icon-btn" onclick="this.closest('.ex-block').remove()" title="Remove">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
@@ -2045,6 +2067,10 @@ function addTemplateEx(section, ex) {
         <option value="time" ${ex?.type==='time'?'selected':''}>Time</option>
         <option value="bodyweight" ${ex?.type==='bodyweight'?'selected':''}>Bodyweight</option>
       </select>
+      <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('[data-tpl-ex-id]'),-1)" title="Move up"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+      <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('[data-tpl-ex-id]'),1)" title="Move down"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button>
+      <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('[data-tpl-ex-id]'),-1)" title="Move up"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+      <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('[data-tpl-ex-id]'),1)" title="Move down"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button>
       <button class="icon-btn" onclick="this.closest('[data-tpl-ex-id]').remove()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
@@ -2070,8 +2096,10 @@ function createTemplateSupersetWrapper(gid) {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" style="flex-shrink:0;"><circle cx="7" cy="12" r="5"/><circle cx="17" cy="12" r="5"/></svg>
         <span style="font-size:11px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Superset</span>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;">
+      <div style="display:flex;gap:6px;align-items:center;">
         <button style="font-size:12px;color:var(--green);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;font-weight:500;" onclick="addToTemplateSupersetGroup(this)">+ Add exercise</button>
+        <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.tpl-superset-wrapper'),-1)" title="Move up"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+        <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('.tpl-superset-wrapper'),1)" title="Move down"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button>
         <button class="icon-btn" style="width:22px;height:22px;" onclick="this.closest('.tpl-superset-wrapper').remove()">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
@@ -2102,6 +2130,8 @@ function addTemplateExIntoSuperset(gid, ex) {
         <option value="time" ${ex?.type==='time'?'selected':''}>Time</option>
         <option value="bodyweight" ${ex?.type==='bodyweight'?'selected':''}>Bodyweight</option>
       </select>
+      <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('[data-tpl-ex-id]'),-1)" title="Move up"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+      <button class="icon-btn" style="width:24px;height:24px;" onclick="moveElement(this.closest('[data-tpl-ex-id]'),1)" title="Move down"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button>
       <button class="icon-btn" onclick="this.closest('[data-tpl-ex-id]').remove()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
