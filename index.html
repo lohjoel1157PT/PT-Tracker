@@ -1486,7 +1486,11 @@ function loadTemplate(clientId) {
   // load main exercises from template
   (t.exercises||[]).forEach(ex => {
     if (Array.isArray(ex)) {
-      ex.forEach(e => buildExBlock(e, true));
+      const gid = uid();
+      ex.forEach(e => {
+        const div = buildExBlock(e, true);
+        if (div) div.dataset.supersetGroup = gid;
+      });
     } else {
       buildExBlock(ex, false);
     }
@@ -1656,7 +1660,10 @@ function addExBlock(section, supersetGroupId, btn, clientId) {
   if (clientId) div.dataset.clientId = clientId;
 
   const labelHtml = supersetGroupId
-    ? `<div class="superset-label">Superset</div>`
+    ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div class="superset-label" style="margin-bottom:0;">Superset</div>
+        <button class="btn btn-sm" style="color:var(--green);border:1px solid rgba(48,209,88,0.4);background:transparent;font-size:11px;padding:3px 8px;" onclick="addToSupersetGroup(this)">+ Add exercise</button>
+       </div>`
     : section==='warmup' ? `<div class="warmup-label">Warm-Up</div>` : '';
 
   div.innerHTML = `
@@ -1702,6 +1709,21 @@ function addSupersetGroup() {
   const groupId = uid();
   addExBlock('main', groupId, null, sessionClients[0]?.id);
   addExBlock('main', groupId, null, sessionClients[0]?.id);
+}
+
+function addToSupersetGroup(btn) {
+  const block = btn.closest('.ex-block');
+  const groupId = block.dataset.supersetGroup;
+  const clientId = block.dataset.clientId;
+  const container = block.parentElement;
+  const groupBlocks = [...container.querySelectorAll(`.ex-block[data-superset-group="${groupId}"]`)];
+  const lastBlock = groupBlocks[groupBlocks.length - 1];
+  addExBlock('main', groupId, null, clientId);
+  // Move newly appended block to sit right after the last member of this group
+  const newBlock = container.lastElementChild;
+  if (newBlock !== lastBlock.nextElementSibling) {
+    lastBlock.insertAdjacentElement('afterend', newBlock);
+  }
 }
 
 function onExNameChange(id, clientId) {
@@ -1974,7 +1996,10 @@ function addTemplateEx(section, ex, supersetGroupId) {
   const isSuperset = !!supersetGroupId;
   div.style.cssText = `background:var(--surface2);border:1px solid ${isSuperset?'rgba(48,209,88,0.3)':section==='warmup'?'rgba(255,159,10,0.3)':'var(--border)'};border-radius:8px;padding:10px;margin-bottom:8px;`;
   div.innerHTML = `
-    ${isSuperset?'<div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Superset</div>':''}
+    ${isSuperset?`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">Superset</div>
+      <button class="btn btn-sm" style="color:var(--green);border:1px solid rgba(48,209,88,0.4);background:transparent;font-size:11px;padding:3px 8px;" onclick="addToTemplateSupersetGroup(this)">+ Add exercise</button>
+    </div>`:''}
     <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
       <div class="ac-wrap" style="flex:1;min-width:140px;">
         <input type="text" id="tex-${id}" placeholder="Exercise name..." value="${ex?ex.name:''}" oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">
@@ -2037,6 +2062,20 @@ function addTemplateSupersetGroup() {
   const gid = 'sg'+Date.now();
   addTemplateEx('main', null, gid);
   addTemplateEx('main', null, gid);
+}
+
+function addToTemplateSupersetGroup(btn) {
+  const block = btn.closest('[data-tpl-ex-id]');
+  const groupId = block.dataset.tplSupersetGroup;
+  const container = document.getElementById('t-main-list');
+  const groupBlocks = [...container.querySelectorAll(`[data-tpl-superset-group="${groupId}"]`)];
+  const lastBlock = groupBlocks[groupBlocks.length - 1];
+  addTemplateEx('main', null, groupId);
+  // Move newly appended block right after the last member of this group
+  const newBlock = container.lastElementChild;
+  if (newBlock !== lastBlock.nextElementSibling) {
+    lastBlock.insertAdjacentElement('afterend', newBlock);
+  }
 }
 
 function showTemplateAC(id) {
