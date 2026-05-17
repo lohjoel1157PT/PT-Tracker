@@ -61,7 +61,11 @@
     .session-list { display: flex; flex-direction: column; gap: 6px; }
     .session-item { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.15s; }
     .session-item:hover { border-color: rgba(10,132,255,0.3); background: rgba(10,132,255,0.03); }
-    .ex-block { background: var(--surface2); border: 1px solid var(--border); border-radius: 11px; padding: 14px; margin-bottom: 10px; }
+    .ex-block { background: var(--surface2); border: 1px solid var(--border); border-radius: 11px; margin-bottom: 10px; display: flex; overflow: hidden; }
+    .ex-block-inner { flex: 1; min-width: 0; padding: 14px; }
+    .ex-drag-handle { width: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-right: 1px solid var(--border); cursor: grab; }
+    .ex-drag-handle:active { cursor: grabbing; }
+    .ex-block.warmup-block .ex-drag-handle { border-right-color: rgba(255,159,10,0.2); }
     .ex-block.warmup-block { border-color: rgba(255,159,10,0.3); background: rgba(255,159,10,0.04); }
     .ex-block.superset-block { border-color: rgba(48,209,88,0.3); background: rgba(48,209,88,0.04); }
     .prev-box { background: rgba(10,132,255,0.07); border: 1px solid rgba(10,132,255,0.2); border-radius: 8px; padding: 7px 11px; font-size: 12px; color: var(--accent); margin-bottom: 9px; }
@@ -271,7 +275,8 @@
       .block-card .block-header .btn { flex: 1; justify-content: center; }
 
       /* Exercise blocks */
-      .ex-block { padding: 12px; border-radius: 10px; }
+      .ex-block { border-radius: 10px; }
+      .ex-block-inner { padding: 12px; }
 
       /* Client detail buttons */
       #page-client, #page-client * { box-sizing: border-box; }
@@ -1389,35 +1394,37 @@ function loadTemplate(clientId) {
     div.dataset.clientId = clientId;
 
     div.innerHTML = `
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
-        <div class="ac-wrap" style="flex:1;">
-          <input type="text" id="en-${id}" value="${ex.name}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId}')">
-          <div class="ac-list" id="ac-${id}"></div>
+      <div class="ex-drag-handle drag-handle"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);opacity:0.5;"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></div>
+      <div class="ex-block-inner">
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+          <div class="ac-wrap" style="flex:1;">
+            <input type="text" id="en-${id}" value="${ex.name}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId}')">
+            <div class="ac-list" id="ac-${id}"></div>
+          </div>
+          <button class="icon-btn" onclick="this.closest('.ex-block').remove()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
         </div>
-        <button class="icon-btn drag-handle" style="width:24px;height:24px;" title="Drag to reorder"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></button>
-        <button class="icon-btn" onclick="this.closest('.ex-block').remove()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-        </button>
+        <div class="form-group" style="margin-bottom:8px;">
+          <input type="text" id="ex-notes-${id}" placeholder="Exercise notes..." style="font-size:12px;padding:6px 10px;">
+        </div>
+        ${prevBlock}
+        <div id="type-toggle-${id}" style="margin-bottom:6px;">
+          <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
+            <input type="checkbox" id="time-mode-${id}" ${isTime?'checked':''} onchange="toggleTimeMode(${id})"> Time-based
+          </label>
+        </div>
+        <div class="sets-table-wrap">
+          <table class="sets-table" id="sets-table-${id}">
+            <thead><tr>${isTime
+              ? '<th>Set</th><th>Duration (sec)</th><th>RPE</th><th></th>'
+              : `<th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th>`
+            }</tr></thead>
+            <tbody id="sets-${id}"></tbody>
+          </table>
+        </div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
       </div>
-      <div class="form-group" style="margin-bottom:8px;">
-        <input type="text" id="ex-notes-${id}" placeholder="Exercise notes..." style="font-size:12px;padding:6px 10px;">
-      </div>
-      ${prevBlock}
-      <div id="type-toggle-${id}" style="margin-bottom:6px;">
-        <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
-          <input type="checkbox" id="time-mode-${id}" ${isTime?'checked':''} onchange="toggleTimeMode(${id})"> Time-based
-        </label>
-      </div>
-      <div class="sets-table-wrap">
-        <table class="sets-table" id="sets-table-${id}">
-          <thead><tr>${isTime
-            ? '<th>Set</th><th>Duration (sec)</th><th>RPE</th><th></th>'
-            : `<th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th>`
-          }</tr></thead>
-          <tbody id="sets-${id}"></tbody>
-        </table>
-      </div>
-      <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
     `;
 
     // IMPORTANT: append to DOM first so addSet can find tbody
@@ -1453,28 +1460,30 @@ function loadTemplate(clientId) {
       div.dataset.exId = id;
       div.dataset.section = 'warmup';
       div.innerHTML = `
-        <div class="warmup-label">Warm-Up</div>
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
-          <div class="ac-wrap" style="flex:1;">
-            <input type="text" id="en-${id}" value="${ex.name}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">
-            <div class="ac-list" id="ac-${id}"></div>
+        <div class="ex-drag-handle drag-handle" style="border-right-color:rgba(255,159,10,0.2);"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);opacity:0.5;"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></div>
+        <div class="ex-block-inner">
+          <div class="warmup-label">Warm-Up</div>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+            <div class="ac-wrap" style="flex:1;">
+              <input type="text" id="en-${id}" value="${ex.name}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">
+              <div class="ac-list" id="ac-${id}"></div>
+            </div>
+            <button class="icon-btn" onclick="this.closest('.ex-block').remove()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
           </div>
-          <button class="icon-btn drag-handle" style="width:24px;height:24px;" title="Drag to reorder"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></button>
-          <button class="icon-btn" onclick="this.closest('.ex-block').remove()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
+          <div class="form-group" style="margin-bottom:8px;">
+            <input type="text" id="ex-notes-${id}" placeholder="Exercise notes..." style="font-size:12px;padding:6px 10px;">
+          </div>
+          <div id="prev-${id}"></div>
+          <div class="sets-table-wrap">
+            <table class="sets-table" id="sets-table-${id}">
+              <thead><tr><th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
+              <tbody id="sets-${id}"></tbody>
+            </table>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
         </div>
-        <div class="form-group" style="margin-bottom:8px;">
-          <input type="text" id="ex-notes-${id}" placeholder="Exercise notes..." style="font-size:12px;padding:6px 10px;">
-        </div>
-        <div id="prev-${id}"></div>
-        <div class="sets-table-wrap">
-          <table class="sets-table" id="sets-table-${id}">
-            <thead><tr><th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
-            <tbody id="sets-${id}"></tbody>
-          </table>
-        </div>
-        <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
       `;
       wuContainer.appendChild(div);
       const prevWuEx = getPrevSetData(lastSession, ex.name);
@@ -1730,33 +1739,35 @@ function addExBlock(section, clientId) {
   if (clientId) div.dataset.clientId = clientId;
 
   div.innerHTML = `
-    ${section==='warmup' ? '<div class="warmup-label">Warm-Up</div>' : ''}
-    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
-      <div class="ac-wrap" style="flex:1;">
-        <input type="text" id="en-${id}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')">
-        <div class="ac-list" id="ac-${id}"></div>
+    <div class="ex-drag-handle drag-handle"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);opacity:0.5;"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></div>
+    <div class="ex-block-inner">
+      ${section==='warmup' ? '<div class="warmup-label">Warm-Up</div>' : ''}
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+        <div class="ac-wrap" style="flex:1;">
+          <input type="text" id="en-${id}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')">
+          <div class="ac-list" id="ac-${id}"></div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('.ex-block').remove()" title="Remove">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
       </div>
-      <button class="icon-btn drag-handle" style="width:24px;height:24px;" title="Drag to reorder"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></button>
-      <button class="icon-btn" onclick="this.closest('.ex-block').remove()" title="Remove">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-      </button>
+      <div class="form-group" style="margin-bottom:10px;">
+        <input type="text" id="ex-notes-${id}" placeholder="Exercise notes (cues, coaching points...)..." style="font-size:12px;padding:6px 10px;">
+      </div>
+      <div id="prev-${id}"></div>
+      <div id="type-toggle-${id}" style="margin-bottom:6px;display:none;">
+        <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="time-mode-${id}" onchange="toggleTimeMode(${id})"> Time-based
+        </label>
+      </div>
+      <div class="sets-table-wrap">
+      <table class="sets-table" id="sets-table-${id}">
+        <thead><tr><th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
+        <tbody id="sets-${id}"></tbody>
+      </table>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
     </div>
-    <div class="form-group" style="margin-bottom:10px;">
-      <input type="text" id="ex-notes-${id}" placeholder="Exercise notes (cues, coaching points...)..." style="font-size:12px;padding:6px 10px;">
-    </div>
-    <div id="prev-${id}"></div>
-    <div id="type-toggle-${id}" style="margin-bottom:6px;display:none;">
-      <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
-        <input type="checkbox" id="time-mode-${id}" onchange="toggleTimeMode(${id})"> Time-based
-      </label>
-    </div>
-    <div class="sets-table-wrap">
-    <table class="sets-table" id="sets-table-${id}">
-      <thead><tr><th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
-      <tbody id="sets-${id}"></tbody>
-    </table>
-    </div>
-    <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
   `;
   container.appendChild(div);
   addSet(id); addSet(id); addSet(id);
@@ -1798,32 +1809,34 @@ function addExBlockIntoSuperset(gid, clientId) {
   div.dataset.section = 'main';
   if (clientId) div.dataset.clientId = clientId;
   div.innerHTML = `
-    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
-      <div class="ac-wrap" style="flex:1;">
-        <input type="text" id="en-${id}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')">
-        <div class="ac-list" id="ac-${id}"></div>
+    <div class="ex-drag-handle drag-handle"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);opacity:0.5;"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></div>
+    <div class="ex-block-inner">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+        <div class="ac-wrap" style="flex:1;">
+          <input type="text" id="en-${id}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')">
+          <div class="ac-list" id="ac-${id}"></div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('.ex-block').remove()" title="Remove">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
       </div>
-      <button class="icon-btn drag-handle" style="width:24px;height:24px;" title="Drag to reorder"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></button>
-      <button class="icon-btn" onclick="this.closest('.ex-block').remove()" title="Remove">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-      </button>
+      <div class="form-group" style="margin-bottom:10px;">
+        <input type="text" id="ex-notes-${id}" placeholder="Exercise notes (cues, coaching points...)..." style="font-size:12px;padding:6px 10px;">
+      </div>
+      <div id="prev-${id}"></div>
+      <div id="type-toggle-${id}" style="margin-bottom:6px;display:none;">
+        <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="time-mode-${id}" onchange="toggleTimeMode(${id})"> Time-based
+        </label>
+      </div>
+      <div class="sets-table-wrap">
+      <table class="sets-table" id="sets-table-${id}">
+        <thead><tr><th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
+        <tbody id="sets-${id}"></tbody>
+      </table>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
     </div>
-    <div class="form-group" style="margin-bottom:10px;">
-      <input type="text" id="ex-notes-${id}" placeholder="Exercise notes (cues, coaching points...)..." style="font-size:12px;padding:6px 10px;">
-    </div>
-    <div id="prev-${id}"></div>
-    <div id="type-toggle-${id}" style="margin-bottom:6px;display:none;">
-      <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
-        <input type="checkbox" id="time-mode-${id}" onchange="toggleTimeMode(${id})"> Time-based
-      </label>
-    </div>
-    <div class="sets-table-wrap">
-    <table class="sets-table" id="sets-table-${id}">
-      <thead><tr><th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
-      <tbody id="sets-${id}"></tbody>
-    </table>
-    </div>
-    <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
   `;
   inner.appendChild(div);
   addSet(id); addSet(id); addSet(id);
@@ -2109,27 +2122,28 @@ function addTemplateEx(section, ex) {
   const div = document.createElement('div');
   div.dataset.tplExId = id;
   div.dataset.tplSection = section;
-  div.style.cssText = `background:var(--surface2);border:1px solid ${section==='warmup'?'rgba(255,159,10,0.3)':'var(--border)'};border-radius:8px;padding:10px;margin-bottom:8px;`;
+  div.style.cssText = `background:var(--surface2);border:1px solid ${section==='warmup'?'rgba(255,159,10,0.3)':'var(--border)'};border-radius:8px;margin-bottom:8px;display:flex;overflow:hidden;`;
   div.innerHTML = `
-    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
-      <div class="ac-wrap" style="flex:1;min-width:140px;">
-        <input type="text" id="tex-${id}" placeholder="Exercise name..." value="${ex?ex.name:''}" oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">
-        <div class="ac-list" id="tac-${id}"></div>
+    <div class="drag-handle" style="width:24px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-right:1px solid ${section==='warmup'?'rgba(255,159,10,0.2)':'var(--border)'};cursor:grab;"><svg width="8" height="12" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);opacity:0.5;"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></div>
+    <div style="flex:1;min-width:0;padding:10px;">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+        <div class="ac-wrap" style="flex:1;min-width:120px;">
+          <input type="text" id="tex-${id}" placeholder="Exercise name..." value="${ex?ex.name:''}" oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">
+          <div class="ac-list" id="tac-${id}"></div>
+        </div>
+        <select id="ttype-${id}" style="width:110px;" onchange="updateTplSetCols(${id})">
+          <option value="weight" ${ex?.type==='weight'||!ex?.type?'selected':''}>Weight</option>
+          <option value="time" ${ex?.type==='time'?'selected':''}>Time</option>
+          <option value="bodyweight" ${ex?.type==='bodyweight'?'selected':''}>Bodyweight</option>
+        </select>
+        <button class="icon-btn" onclick="this.closest('[data-tpl-ex-id]').remove()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
       </div>
-      <select id="ttype-${id}" style="width:110px;" onchange="updateTplSetCols(${id})">
-        <option value="weight" ${ex?.type==='weight'||!ex?.type?'selected':''}>Weight</option>
-        <option value="time" ${ex?.type==='time'?'selected':''}>Time</option>
-        <option value="bodyweight" ${ex?.type==='bodyweight'?'selected':''}>Bodyweight</option>
-      </select>
-      <button class="icon-btn drag-handle" style="width:24px;height:24px;" title="Drag to reorder"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></button>
-      <button class="icon-btn drag-handle" style="width:24px;height:24px;" title="Drag to reorder"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></button>
-      <button class="icon-btn" onclick="this.closest('[data-tpl-ex-id]').remove()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-      </button>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets &amp; Target Reps</div>
+      <div id="tpl-sets-${id}"></div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addTplSet(${id})">+ Set</button>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets &amp; Target Reps</div>
-    <div id="tpl-sets-${id}"></div>
-    <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addTplSet(${id})">+ Set</button>
   `;
   container.appendChild(div);
   const numSets = ex?.sets?.length || 3;
@@ -2169,26 +2183,28 @@ function addTemplateExIntoSuperset(gid, ex) {
   const div = document.createElement('div');
   div.dataset.tplExId = id;
   div.dataset.tplSupersetGroup = gid;
-  div.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;';
+  div.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;overflow:hidden;';
   div.innerHTML = `
-    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
-      <div class="ac-wrap" style="flex:1;min-width:140px;">
-        <input type="text" id="tex-${id}" placeholder="Exercise name..." value="${ex?ex.name:''}" oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">
-        <div class="ac-list" id="tac-${id}"></div>
+    <div class="drag-handle" style="width:24px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-right:1px solid var(--border);cursor:grab;"><svg width="8" height="12" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);opacity:0.5;"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></div>
+    <div style="flex:1;min-width:0;padding:10px;">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+        <div class="ac-wrap" style="flex:1;min-width:120px;">
+          <input type="text" id="tex-${id}" placeholder="Exercise name..." value="${ex?ex.name:''}" oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">
+          <div class="ac-list" id="tac-${id}"></div>
+        </div>
+        <select id="ttype-${id}" style="width:110px;" onchange="updateTplSetCols(${id})">
+          <option value="weight" ${ex?.type==='weight'||!ex?.type?'selected':''}>Weight</option>
+          <option value="time" ${ex?.type==='time'?'selected':''}>Time</option>
+          <option value="bodyweight" ${ex?.type==='bodyweight'?'selected':''}>Bodyweight</option>
+        </select>
+        <button class="icon-btn" onclick="this.closest('[data-tpl-ex-id]').remove()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
       </div>
-      <select id="ttype-${id}" style="width:110px;" onchange="updateTplSetCols(${id})">
-        <option value="weight" ${ex?.type==='weight'||!ex?.type?'selected':''}>Weight</option>
-        <option value="time" ${ex?.type==='time'?'selected':''}>Time</option>
-        <option value="bodyweight" ${ex?.type==='bodyweight'?'selected':''}>Bodyweight</option>
-      </select>
-      <button class="icon-btn drag-handle" style="width:24px;height:24px;" title="Drag to reorder"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></button>
-      <button class="icon-btn" onclick="this.closest('[data-tpl-ex-id]').remove()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-      </button>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets &amp; Target Reps</div>
+      <div id="tpl-sets-${id}"></div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addTplSet(${id})">+ Set</button>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets &amp; Target Reps</div>
-    <div id="tpl-sets-${id}"></div>
-    <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addTplSet(${id})">+ Set</button>
   `;
   inner.appendChild(div);
   const numSets = ex?.sets?.length || 3;
