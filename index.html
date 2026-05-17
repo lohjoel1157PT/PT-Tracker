@@ -1974,8 +1974,13 @@ function openTemplateModal(clientId, templateId) {
       document.getElementById('t-notes').value = t.notes||'';
       (t.warmup||[]).forEach(ex => addTemplateEx('warmup', ex));
       (t.exercises||[]).forEach(ex => {
-        if (Array.isArray(ex)) { const gid='sg'+tplExIdx; ex.forEach(e=>addTemplateEx('main',e,gid)); }
-        else addTemplateEx('main', ex);
+        if (Array.isArray(ex)) {
+          const gid = 'sg'+tplExIdx;
+          createTemplateSupersetWrapper(gid);
+          ex.forEach(e => addTemplateExIntoSuperset(gid, e));
+        } else {
+          addTemplateEx('main', ex);
+        }
       });
     }
   } else {
@@ -1985,21 +1990,15 @@ function openTemplateModal(clientId, templateId) {
   openModal('template');
 }
 
-function addTemplateEx(section, ex, supersetGroupId) {
+function addTemplateEx(section, ex) {
   const id = tplExIdx++;
   const containerId = section==='warmup' ? 't-warmup-list' : 't-main-list';
   const container = document.getElementById(containerId);
   const div = document.createElement('div');
   div.dataset.tplExId = id;
   div.dataset.tplSection = section;
-  if (supersetGroupId) div.dataset.tplSupersetGroup = supersetGroupId;
-  const isSuperset = !!supersetGroupId;
-  div.style.cssText = `background:var(--surface2);border:1px solid ${isSuperset?'rgba(48,209,88,0.3)':section==='warmup'?'rgba(255,159,10,0.3)':'var(--border)'};border-radius:8px;padding:10px;margin-bottom:8px;`;
+  div.style.cssText = `background:var(--surface2);border:1px solid ${section==='warmup'?'rgba(255,159,10,0.3)':'var(--border)'};border-radius:8px;padding:10px;margin-bottom:8px;`;
   div.innerHTML = `
-    ${isSuperset?`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-      <div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">Superset</div>
-      <button class="btn btn-sm" style="color:var(--green);border:1px solid rgba(48,209,88,0.4);background:transparent;font-size:11px;padding:3px 8px;" onclick="addToTemplateSupersetGroup(this)">+ Add exercise</button>
-    </div>`:''}
     <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
       <div class="ac-wrap" style="flex:1;min-width:140px;">
         <input type="text" id="tex-${id}" placeholder="Exercise name..." value="${ex?ex.name:''}" oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">
@@ -2019,6 +2018,60 @@ function addTemplateEx(section, ex, supersetGroupId) {
     <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addTplSet(${id})">+ Set</button>
   `;
   container.appendChild(div);
+  const numSets = ex?.sets?.length || 3;
+  for (let i=0; i<numSets; i++) addTplSet(id, ex?.sets?.[i]);
+}
+
+function createTemplateSupersetWrapper(gid) {
+  const container = document.getElementById('t-main-list');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'tpl-superset-wrapper';
+  wrapper.dataset.supersetGroup = gid;
+  wrapper.style.cssText = 'border:1px solid rgba(48,209,88,0.4);border-radius:11px;padding:12px;margin-bottom:10px;background:rgba(48,209,88,0.05);';
+  wrapper.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span style="font-size:11px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Superset</span>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button class="btn btn-sm" style="color:var(--green);border:1px solid rgba(48,209,88,0.4);background:transparent;font-size:11px;padding:3px 8px;" onclick="addToTemplateSupersetGroup(this)">+ Add exercise</button>
+        <button class="icon-btn" onclick="this.closest('.tpl-superset-wrapper').remove()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="tpl-ss-ex-${gid}"></div>
+  `;
+  container.appendChild(wrapper);
+  return wrapper;
+}
+
+function addTemplateExIntoSuperset(gid, ex) {
+  const inner = document.getElementById('tpl-ss-ex-' + gid);
+  if (!inner) return;
+  const id = tplExIdx++;
+  const div = document.createElement('div');
+  div.dataset.tplExId = id;
+  div.dataset.tplSupersetGroup = gid;
+  div.style.cssText = 'background:var(--surface2);border:1px solid rgba(48,209,88,0.2);border-radius:8px;padding:10px;margin-bottom:8px;';
+  div.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+      <div class="ac-wrap" style="flex:1;min-width:140px;">
+        <input type="text" id="tex-${id}" placeholder="Exercise name..." value="${ex?ex.name:''}" oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">
+        <div class="ac-list" id="tac-${id}"></div>
+      </div>
+      <select id="ttype-${id}" style="width:110px;" onchange="updateTplSetCols(${id})">
+        <option value="weight" ${ex?.type==='weight'||!ex?.type?'selected':''}>Weight</option>
+        <option value="time" ${ex?.type==='time'?'selected':''}>Time</option>
+        <option value="bodyweight" ${ex?.type==='bodyweight'?'selected':''}>Bodyweight</option>
+      </select>
+      <button class="icon-btn" onclick="this.closest('[data-tpl-ex-id]').remove()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets &amp; Target Reps</div>
+    <div id="tpl-sets-${id}"></div>
+    <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addTplSet(${id})">+ Set</button>
+  `;
+  inner.appendChild(div);
   const numSets = ex?.sets?.length || 3;
   for (let i=0; i<numSets; i++) addTplSet(id, ex?.sets?.[i]);
 }
@@ -2059,23 +2112,16 @@ function updateTplSetCols(exId) {
 }
 
 function addTemplateSupersetGroup() {
-  const gid = 'sg'+Date.now();
-  addTemplateEx('main', null, gid);
-  addTemplateEx('main', null, gid);
+  const gid = 'sg' + Date.now();
+  createTemplateSupersetWrapper(gid);
+  addTemplateExIntoSuperset(gid, null);
+  addTemplateExIntoSuperset(gid, null);
 }
 
 function addToTemplateSupersetGroup(btn) {
-  const block = btn.closest('[data-tpl-ex-id]');
-  const groupId = block.dataset.tplSupersetGroup;
-  const container = document.getElementById('t-main-list');
-  const groupBlocks = [...container.querySelectorAll(`[data-tpl-superset-group="${groupId}"]`)];
-  const lastBlock = groupBlocks[groupBlocks.length - 1];
-  addTemplateEx('main', null, groupId);
-  // Move newly appended block right after the last member of this group
-  const newBlock = container.lastElementChild;
-  if (newBlock !== lastBlock.nextElementSibling) {
-    lastBlock.insertAdjacentElement('afterend', newBlock);
-  }
+  const wrapper = btn.closest('.tpl-superset-wrapper');
+  const gid = wrapper.dataset.supersetGroup;
+  addTemplateExIntoSuperset(gid, null);
 }
 
 function showTemplateAC(id) {
@@ -2101,41 +2147,32 @@ function collectTemplateExBlocks(containerId) {
   const blocks = [];
   const container = document.getElementById(containerId);
   if (!container) return blocks;
-  const allBlocks = [...container.querySelectorAll('[data-tpl-ex-id]')];
-  const processed = new Set();
-  allBlocks.forEach(block => {
-    const id = block.dataset.tplExId;
-    if (processed.has(id)) return;
-    processed.add(id);
+
+  function readEx(id) {
     const name = (document.getElementById('tex-'+id)?.value||'').trim();
-    if (!name) return;
+    if (!name) return null;
     const type = document.getElementById('ttype-'+id)?.value||'weight';
     const sets = [];
     document.querySelectorAll(`#tpl-sets-${id} > div`).forEach(row => {
       if (type==='time') sets.push({duration: parseInt(row.querySelector('[data-field="duration"]')?.value)||0});
       else sets.push({targetReps: parseInt(row.querySelector('[data-field="targetReps"]')?.value)||0});
     });
-    const exData = {name, type, sets};
-    const sgId = block.dataset.tplSupersetGroup;
-    if (sgId) {
-      const siblings = allBlocks.filter(b=>b.dataset.tplSupersetGroup===sgId && !processed.has(b.dataset.tplExId));
-      const group = [exData];
-      siblings.forEach(sb => {
-        const sid = sb.dataset.tplExId;
-        processed.add(sid);
-        const sname = (document.getElementById('tex-'+sid)?.value||'').trim();
-        if (!sname) return;
-        const stype = document.getElementById('ttype-'+sid)?.value||'weight';
-        const ssets = [];
-        document.querySelectorAll(`#tpl-sets-${sid} > div`).forEach(row => {
-          if (stype==='time') ssets.push({duration: parseInt(row.querySelector('[data-field="duration"]')?.value)||0});
-          else ssets.push({targetReps: parseInt(row.querySelector('[data-field="targetReps"]')?.value)||0});
-        });
-        group.push({name:sname, type:stype, sets:ssets});
+    return {name, type, sets};
+  }
+
+  [...container.children].forEach(child => {
+    if (child.classList.contains('tpl-superset-wrapper')) {
+      const inner = child.querySelector('[id^="tpl-ss-ex-"]');
+      if (!inner) return;
+      const group = [];
+      [...inner.querySelectorAll('[data-tpl-ex-id]')].forEach(block => {
+        const ex = readEx(block.dataset.tplExId);
+        if (ex) group.push(ex);
       });
-      blocks.push(group);
-    } else {
-      blocks.push(exData);
+      if (group.length > 0) blocks.push(group);
+    } else if (child.dataset.tplExId !== undefined) {
+      const ex = readEx(child.dataset.tplExId);
+      if (ex) blocks.push(ex);
     }
   });
   return blocks;
