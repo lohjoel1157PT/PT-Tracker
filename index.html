@@ -1319,7 +1319,7 @@ function renderClientSections() {
         <div class="section-header" style="margin-top:0;">
           <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:${sc.color};">${c.name}</span>
           <div class="section-actions">
-            <button class="btn btn-secondary btn-sm" onclick="addExBlock('main','',this,'${sc.id}')" data-client="${sc.id}">+ Add Exercise</button>
+            <button class="btn btn-secondary btn-sm" onclick="addExBlock('main','${sc.id}')" data-client="${sc.id}">+ Add Exercise</button>
             <button class="btn btn-secondary btn-sm" style="color:var(--green);border-color:var(--green);" onclick="addSupersetGroupForClient('${sc.id}')">+ Superset</button>
           </div>
         </div>
@@ -1333,7 +1333,7 @@ function renderClientSections() {
       <hr class="divider">
     `;
     container.appendChild(div);
-    addExBlock('main', '', null, sc.id);
+    addExBlock('main', sc.id);
   });
 }
 
@@ -1356,7 +1356,7 @@ function loadTemplate(clientId) {
   window._sessionTemplates[clientId] = templateId;
 
   // helper to build one exercise block from template ex
-  function buildExBlock(ex, isInSuperset) {
+  function buildExBlock(ex, isInSuperset, targetContainer) {
     const id = exIdx++;
     const isTime = ex.type === 'time';
     const prevEx = getPrevSetData(lastSession, ex.name);
@@ -1415,7 +1415,7 @@ function loadTemplate(clientId) {
     `;
 
     // IMPORTANT: append to DOM first so addSet can find tbody
-    container.appendChild(div);
+    (targetContainer || container).appendChild(div);
 
     // add sets with weight pre-filled from last session
     const prevSets = prevEx?.sets || [];
@@ -1487,10 +1487,9 @@ function loadTemplate(clientId) {
   (t.exercises||[]).forEach(ex => {
     if (Array.isArray(ex)) {
       const gid = uid();
-      ex.forEach(e => {
-        const div = buildExBlock(e, true);
-        if (div) div.dataset.supersetGroup = gid;
-      });
+      createSupersetWrapper(gid, container);
+      const inner = document.getElementById('ss-inner-' + gid);
+      ex.forEach(e => buildExBlock(e, true, inner));
     } else {
       buildExBlock(ex, false);
     }
@@ -1640,34 +1639,25 @@ function getExType(name) {
   return lib ? lib.type : 'weight';
 }
 
-function addExBlock(section, supersetGroupId, btn, clientId) {
+function addExBlock(section, clientId) {
   const id = exIdx++;
   let container;
   if (section === 'warmup') {
     container = document.getElementById('warmup-container');
   } else {
-    // if clientId not passed, use first client or fallback
     const cid = clientId || (sessionClients[0]?.id);
     container = cid ? document.getElementById('ex-container-' + cid) : document.getElementById('ex-container-0');
     if (!container) return;
   }
 
   const div = document.createElement('div');
-  div.className = 'ex-block' + (section==='warmup'?' warmup-block':'') + (supersetGroupId?' superset-block':'');
+  div.className = 'ex-block' + (section==='warmup' ? ' warmup-block' : '');
   div.dataset.exId = id;
   div.dataset.section = section;
-  if (supersetGroupId) div.dataset.supersetGroup = supersetGroupId;
   if (clientId) div.dataset.clientId = clientId;
 
-  const labelHtml = supersetGroupId
-    ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <div class="superset-label" style="margin-bottom:0;">Superset</div>
-        <button class="btn btn-sm" style="color:var(--green);border:1px solid rgba(48,209,88,0.4);background:transparent;font-size:11px;padding:3px 8px;" onclick="addToSupersetGroup(this)">+ Add exercise</button>
-       </div>`
-    : section==='warmup' ? `<div class="warmup-label">Warm-Up</div>` : '';
-
   div.innerHTML = `
-    ${labelHtml}
+    ${section==='warmup' ? '<div class="warmup-label">Warm-Up</div>' : ''}
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
       <div class="ac-wrap" style="flex:1;">
         <input type="text" id="en-${id}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')">
@@ -1699,31 +1689,92 @@ function addExBlock(section, supersetGroupId, btn, clientId) {
   setTimeout(()=>document.getElementById('en-'+id)?.focus(), 30);
 }
 
+function createSupersetWrapper(gid, container) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'ss-wrapper';
+  wrapper.dataset.supersetGroup = gid;
+  wrapper.style.cssText = 'border:1px solid rgba(48,209,88,0.4);border-radius:11px;padding:12px;margin-bottom:10px;background:rgba(48,209,88,0.05);';
+  wrapper.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span class="superset-label" style="margin-bottom:0;">Superset</span>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button class="btn btn-sm" style="color:var(--green);border:1px solid rgba(48,209,88,0.4);background:transparent;font-size:11px;padding:3px 8px;" onclick="addToSupersetGroup(this)">+ Add exercise</button>
+        <button class="icon-btn" onclick="this.closest('.ss-wrapper').remove()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="ss-inner-${gid}"></div>
+  `;
+  container.appendChild(wrapper);
+  return wrapper;
+}
+
+function addExBlockIntoSuperset(gid, clientId) {
+  const inner = document.getElementById('ss-inner-' + gid);
+  if (!inner) return;
+  const id = exIdx++;
+  const div = document.createElement('div');
+  div.className = 'ex-block superset-block';
+  div.dataset.exId = id;
+  div.dataset.section = 'main';
+  if (clientId) div.dataset.clientId = clientId;
+  div.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <div class="ac-wrap" style="flex:1;">
+        <input type="text" id="en-${id}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')">
+        <div class="ac-list" id="ac-${id}"></div>
+      </div>
+      <button class="icon-btn" onclick="this.closest('.ex-block').remove()" title="Remove">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="form-group" style="margin-bottom:10px;">
+      <input type="text" id="ex-notes-${id}" placeholder="Exercise notes (cues, coaching points...)..." style="font-size:12px;padding:6px 10px;">
+    </div>
+    <div id="prev-${id}"></div>
+    <div id="type-toggle-${id}" style="margin-bottom:6px;display:none;">
+      <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
+        <input type="checkbox" id="time-mode-${id}" onchange="toggleTimeMode(${id})"> Time-based
+      </label>
+    </div>
+    <div class="sets-table-wrap">
+    <table class="sets-table" id="sets-table-${id}">
+      <thead><tr><th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
+      <tbody id="sets-${id}"></tbody>
+    </table>
+    </div>
+    <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
+  `;
+  inner.appendChild(div);
+  addSet(id); addSet(id); addSet(id);
+  setTimeout(()=>document.getElementById('en-'+id)?.focus(), 30);
+}
+
 function addSupersetGroupForClient(clientId) {
-  const groupId = uid();
-  addExBlock('main', groupId, null, clientId);
-  addExBlock('main', groupId, null, clientId);
+  const container = document.getElementById('ex-container-' + clientId);
+  if (!container) return;
+  const gid = uid();
+  createSupersetWrapper(gid, container);
+  addExBlockIntoSuperset(gid, clientId);
+  addExBlockIntoSuperset(gid, clientId);
 }
 
 function addSupersetGroup() {
-  const groupId = uid();
-  addExBlock('main', groupId, null, sessionClients[0]?.id);
-  addExBlock('main', groupId, null, sessionClients[0]?.id);
+  const clientId = sessionClients[0]?.id;
+  const container = document.getElementById('ex-container-' + clientId);
+  if (!container) return;
+  const gid = uid();
+  createSupersetWrapper(gid, container);
+  addExBlockIntoSuperset(gid, clientId);
+  addExBlockIntoSuperset(gid, clientId);
 }
 
 function addToSupersetGroup(btn) {
-  const block = btn.closest('.ex-block');
-  const groupId = block.dataset.supersetGroup;
-  const clientId = block.dataset.clientId;
-  const container = block.parentElement;
-  const groupBlocks = [...container.querySelectorAll(`.ex-block[data-superset-group="${groupId}"]`)];
-  const lastBlock = groupBlocks[groupBlocks.length - 1];
-  addExBlock('main', groupId, null, clientId);
-  // Move newly appended block to sit right after the last member of this group
-  const newBlock = container.lastElementChild;
-  if (newBlock !== lastBlock.nextElementSibling) {
-    lastBlock.insertAdjacentElement('afterend', newBlock);
-  }
+  const wrapper = btn.closest('.ss-wrapper');
+  const gid = wrapper.dataset.supersetGroup;
+  const clientId = wrapper.closest('[id^="ex-container-"]')?.id.replace('ex-container-', '');
+  addExBlockIntoSuperset(gid, clientId);
 }
 
 function onExNameChange(id, clientId) {
@@ -1846,17 +1897,12 @@ function saveSession() {
     const blocks = [];
     const container = document.getElementById(containerId);
     if (!container) return blocks;
-    const allBlocks = [...container.querySelectorAll('[data-ex-id]')];
-    const processed = new Set();
-    allBlocks.forEach(block => {
-      const id = block.dataset.exId;
-      if (processed.has(id)) return;
-      processed.add(id);
-      const sgId = block.dataset.supersetGroup;
-      const isTime = document.getElementById('time-mode-'+id)?.checked;
+
+    function readEx(id) {
       const name = (document.getElementById('en-'+id)?.value||'').trim();
-      if (!name) return;
+      if (!name) return null;
       const exNotes = (document.getElementById('ex-notes-'+id)?.value||'').trim();
+      const isTime = document.getElementById('time-mode-'+id)?.checked;
       const sets = [];
       document.querySelectorAll(`#sets-${id} tr`).forEach(row => {
         if (isTime) {
@@ -1871,36 +1917,23 @@ function saveSession() {
           if (w>0||r>0) sets.push({weight:w,reps:r,rpe});
         }
       });
-      const exData = { name, exNotes, sets };
-      if (sgId) {
-        const siblings = allBlocks.filter(b=>b.dataset.supersetGroup===sgId && !processed.has(b.dataset.exId));
-        const group = [exData];
-        siblings.forEach(sb => {
-          const sid = sb.dataset.exId;
-          processed.add(sid);
-          const sname = (document.getElementById('en-'+sid)?.value||'').trim();
-          if (!sname) return;
-          const sNotes = (document.getElementById('ex-notes-'+sid)?.value||'').trim();
-          const isTimeS = document.getElementById('time-mode-'+sid)?.checked;
-          const ssets = [];
-          document.querySelectorAll(`#sets-${sid} tr`).forEach(row => {
-            if (isTimeS) {
-              const d = parseInt(document.getElementById(`d-${sid}-${row.rowIndex}`)?.value)||0;
-              const rpe = parseFloat(document.getElementById(`rpe-${sid}-${row.rowIndex}`)?.value)||null;
-              if (d>0) ssets.push({type:'time',duration:d,rpe});
-            } else {
-              const ins = row.querySelectorAll('input[type="number"]');
-              const w = parseFloat(ins[0]?.value)||0;
-              const r = parseInt(ins[1]?.value)||0;
-              const rpe = parseFloat(ins[2]?.value)||null;
-              if (w>0||r>0) ssets.push({weight:w,reps:r,rpe});
-            }
-          });
-          group.push({name:sname, exNotes:sNotes, sets:ssets});
+      return {name, exNotes, sets};
+    }
+
+    [...container.children].forEach(child => {
+      if (child.classList.contains('ss-wrapper')) {
+        const gid = child.dataset.supersetGroup;
+        const inner = document.getElementById('ss-inner-' + gid);
+        if (!inner) return;
+        const group = [];
+        [...inner.querySelectorAll('[data-ex-id]')].forEach(block => {
+          const ex = readEx(block.dataset.exId);
+          if (ex) group.push(ex);
         });
-        if (group.some(e=>e.sets.length>0)) blocks.push(group);
-      } else {
-        if (sets.length) blocks.push(exData);
+        if (group.some(e => e.sets.length > 0)) blocks.push(group);
+      } else if (child.dataset.exId !== undefined) {
+        const ex = readEx(child.dataset.exId);
+        if (ex && ex.sets.length) blocks.push(ex);
       }
     });
     return blocks;
