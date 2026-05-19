@@ -681,6 +681,21 @@
 </div>
 
 <!-- Weight Log Modal -->
+<div class="modal-bg" id="modal-topup">
+  <div class="modal" style="max-width:340px;">
+    <h3>Top Up Package</h3>
+    <input type="hidden" id="topup-client-id">
+    <div class="form-group">
+      <label>Sessions to add</label>
+      <input id="topup-amount" type="number" min="1" placeholder="10">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('topup')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTopUp()">Add Sessions</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-weight">
   <div class="modal">
     <h3>Log Body Weight</h3>
@@ -982,7 +997,10 @@ function renderClient(id) {
     <div class="card" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <h3 style="margin:0;">Package</h3>
-        <button class="btn btn-secondary btn-sm" onclick="openClientModal('${c.id}')">Edit</button>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-primary btn-sm" onclick="openTopUpModal('${c.id}')">+ Top Up</button>
+          <button class="btn btn-secondary btn-sm" onclick="openClientModal('${c.id}')">Edit</button>
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
         <div><div style="font-size:22px;font-weight:700;color:var(--accent);">${pkgTotal}</div><div style="font-size:11px;color:var(--muted);">Total Sessions</div></div>
@@ -1137,6 +1155,23 @@ function showSession(sessionId, fromId) {
     else { nav('client', fromId); }
   };
   nav('session', sessionId);
+}
+
+// ── PACKAGE TOP-UP ────────────────────────────────────────────────────────────
+function openTopUpModal(clientId) {
+  document.getElementById('topup-client-id').value = clientId;
+  document.getElementById('topup-amount').value = '';
+  openModal('topup');
+}
+
+function saveTopUp() {
+  const clientId = document.getElementById('topup-client-id').value;
+  const amount = parseInt(document.getElementById('topup-amount').value);
+  if (!amount || amount < 1) { alert('Please enter a valid number of sessions.'); return; }
+  const c = db.clients.find(cl => cl.id === clientId);
+  if (!c) return;
+  c.pkgTotal = (parseInt(c.pkgTotal) || 0) + amount;
+  save(); closeModal('topup'); renderClient(clientId);
 }
 
 // ── WEIGHT LOGGING ────────────────────────────────────────────────────────────
