@@ -2109,6 +2109,7 @@ function renderTemplatesList(clientId) {
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
           <button class="btn btn-secondary btn-sm" onclick="openTemplateModal('${clientId}','${t.id}')">Edit</button>
+          <button class="btn btn-secondary btn-sm" onclick="duplicateTemplate('${t.id}','${clientId}')">Duplicate</button>
           <button class="btn btn-danger btn-sm" onclick="deleteTemplate('${t.id}','${clientId}')">Delete</button>
         </div>
       </div>
@@ -2368,6 +2369,16 @@ function saveTemplate() {
   }
   save(); closeModal('template'); renderClient(clientId);
   setTimeout(()=>{ document.querySelectorAll('.tabs .tab').forEach(t=>{ if(t.textContent.trim()==='Templates') t.click(); }); }, 100);
+}
+
+function duplicateTemplate(id, clientId) {
+  const src = (db.templates||[]).find(t=>t.id===id);
+  if (!src) return;
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.id = uid();
+  copy.name = 'Copy of ' + src.name;
+  db.templates.push(copy);
+  save(); renderClient(clientId);
 }
 
 function deleteTemplate(id, clientId) {
