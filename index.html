@@ -1464,6 +1464,7 @@ function loadTemplate(clientId) {
 
     // IMPORTANT: append to DOM first so addSet can find tbody
     (targetContainer || container).appendChild(div);
+    if (ex.notes) { const n = document.getElementById('ex-notes-'+id); if (n) n.value = ex.notes; }
 
     // add sets with weight pre-filled from last session
     const prevSets = prevEx?.sets || [];
@@ -2195,6 +2196,7 @@ function addTemplateEx(section, ex) {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
+      <input type="text" id="tnotes-${id}" placeholder="Notes (e.g. seated, no back support...)" value="${ex?.notes||''}" style="font-size:12px;padding:5px 9px;margin-bottom:6px;width:100%;box-sizing:border-box;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets &amp; Target Reps</div>
       <div id="tpl-sets-${id}"></div>
       <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addTplSet(${id})">+ Set</button>
@@ -2256,6 +2258,7 @@ function addTemplateExIntoSuperset(gid, ex) {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
+      <input type="text" id="tnotes-${id}" placeholder="Notes (e.g. seated, no back support...)" value="${ex?.notes||''}" style="font-size:12px;padding:5px 9px;margin-bottom:6px;width:100%;box-sizing:border-box;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets &amp; Target Reps</div>
       <div id="tpl-sets-${id}"></div>
       <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addTplSet(${id})">+ Set</button>
@@ -2361,12 +2364,13 @@ function collectTemplateExBlocks(containerId) {
     const name = (document.getElementById('tex-'+id)?.value||'').trim();
     if (!name) return null;
     const type = document.getElementById('ttype-'+id)?.value||'weight';
+    const notes = (document.getElementById('tnotes-'+id)?.value||'').trim();
     const sets = [];
     document.querySelectorAll(`#tpl-sets-${id} > div`).forEach(row => {
       if (type==='time') sets.push({duration: parseInt(row.querySelector('[data-field="duration"]')?.value)||0});
       else sets.push({targetReps: parseInt(row.querySelector('[data-field="targetReps"]')?.value)||0});
     });
-    return {name, type, sets};
+    return {name, type, notes, sets};
   }
 
   [...container.children].forEach(child => {
