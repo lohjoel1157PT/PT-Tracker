@@ -1964,11 +1964,30 @@ function removeSet(btn, exId) {
   document.querySelectorAll(`#sets-${exId} tr`).forEach((r,i)=>r.cells[0].textContent=i+1);
 }
 
+function allExerciseNames() {
+  const seen = new Set();
+  const results = [];
+  db.library.forEach(e => {
+    if (!seen.has(e.name.toLowerCase())) { seen.add(e.name.toLowerCase()); results.push({ name: e.name, group: e.group }); }
+  });
+  (db.sessions||[]).forEach(s => {
+    [...(s.warmup||[]), ...(s.exercises||[]).flat()].forEach(e => {
+      if (e && e.name && !seen.has(e.name.toLowerCase())) { seen.add(e.name.toLowerCase()); results.push({ name: e.name, group: 'Used' }); }
+    });
+  });
+  (db.templates||[]).forEach(t => {
+    [...(t.warmup||[]), ...(t.exercises||[]).flat()].forEach(e => {
+      if (e && e.name && !seen.has(e.name.toLowerCase())) { seen.add(e.name.toLowerCase()); results.push({ name: e.name, group: 'Used' }); }
+    });
+  });
+  return results;
+}
+
 function showAC(id) {
   const val = (document.getElementById('en-'+id)?.value||'').toLowerCase();
   const list = document.getElementById('ac-'+id);
   if (!val) { list.style.display='none'; return; }
-  const matches = db.library.filter(e=>e.name.toLowerCase().includes(val)).slice(0,9);
+  const matches = allExerciseNames().filter(e=>e.name.toLowerCase().includes(val)).slice(0,9);
   if (!matches.length) { list.style.display='none'; return; }
   list.style.display='block';
   list.innerHTML = matches.map(m=>`<div class="ac-item" onmousedown="pickAC(${id},'${m.name.replace(/'/g,"\\'")}')">${m.name} <span style="color:var(--muted);font-size:11px;">${m.group}</span></div>`).join('');
@@ -2295,11 +2314,30 @@ function addToTemplateSupersetGroup(btn) {
   addTemplateExIntoSuperset(gid, null);
 }
 
+function allExerciseNamesWithType() {
+  const seen = new Set();
+  const results = [];
+  db.library.forEach(e => {
+    if (!seen.has(e.name.toLowerCase())) { seen.add(e.name.toLowerCase()); results.push({ name: e.name, group: e.group, type: e.type||'weight' }); }
+  });
+  (db.sessions||[]).forEach(s => {
+    [...(s.warmup||[]), ...(s.exercises||[]).flat()].forEach(e => {
+      if (e && e.name && !seen.has(e.name.toLowerCase())) { seen.add(e.name.toLowerCase()); results.push({ name: e.name, group: 'Used', type: 'weight' }); }
+    });
+  });
+  (db.templates||[]).forEach(t => {
+    [...(t.warmup||[]), ...(t.exercises||[]).flat()].forEach(e => {
+      if (e && e.name && !seen.has(e.name.toLowerCase())) { seen.add(e.name.toLowerCase()); results.push({ name: e.name, group: 'Used', type: e.type||'weight' }); }
+    });
+  });
+  return results;
+}
+
 function showTemplateAC(id) {
   const val = (document.getElementById('tex-'+id)?.value||'').toLowerCase();
   const list = document.getElementById('tac-'+id);
   if (!val) { list.style.display='none'; return; }
-  const matches = db.library.filter(e=>e.name.toLowerCase().includes(val)).slice(0,8);
+  const matches = allExerciseNamesWithType().filter(e=>e.name.toLowerCase().includes(val)).slice(0,8);
   if (!matches.length) { list.style.display='none'; return; }
   list.style.display='block';
   list.innerHTML = matches.map(m=>`<div class="ac-item" onmousedown="pickTemplateAC(${id},'${m.name.replace(/'/g,"\\'")}','${m.type}')">${m.name} <span style="color:var(--muted);font-size:11px;">${m.group}</span></div>`).join('');
