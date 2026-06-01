@@ -1251,7 +1251,10 @@ function renderSession(id) {
         <h2>${fmtDate(s.date)}</h2>
         <div style="color:var(--accent);font-size:13px;margin-top:3px;">${c?c.name:'Unknown client'}</div>
       </div>
-      <button class="btn btn-danger btn-sm" onclick="deleteSession('${s.id}','${s.clientId}')">Delete Session</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="editSession('${s.id}')">Edit Session</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteSession('${s.id}','${s.clientId}')">Delete Session</button>
+      </div>
     </div>
     ${s.notes?`<div class="card" style="margin-bottom:14px;"><p style="font-size:13px;color:var(--muted);">${s.notes}</p></div>`:''}
     ${(()=>{
@@ -1281,6 +1284,202 @@ function deleteSession(id, clientId) {
   }
   db.sessions = db.sessions.filter(s=>s.id!==id);
   save(); nav('client', clientId);
+}
+
+// ── EDIT SESSION ─────────────────────────────────────────────────────────────
+
+function editSession(sessionId) {
+  const s = db.sessions.find(x => x.id === sessionId);
+  if (!s) return;
+
+  document.getElementById('session-detail').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
+      <h2 style="margin:0;">Edit Session</h2>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="renderSession('${s.id}')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveEditedSession('${s.id}')">Save Changes</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px;">
+      <div class="grid-2">
+        <div class="form-group"><label>Date</label><input id="edit-s-date" type="date" value="${s.date}"></div>
+        <div class="form-group"><label>Session Notes</label><input id="edit-s-notes" type="text" value="${(s.notes||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;color:var(--orange);">Warm-Up</h3>
+        <button class="btn btn-secondary btn-sm" onclick="addEditExBlock('edit-warmup-container','${s.clientId}',null,true)">+ Exercise</button>
+      </div>
+      <div id="edit-warmup-container"></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;">Main Workout</h3>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="addEditExBlock('edit-ex-container','${s.clientId}',null,false)">+ Exercise</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--green);border-color:rgba(48,209,88,0.4);" onclick="addEditSuperset('${s.clientId}')">+ Superset</button>
+        </div>
+      </div>
+      <div id="edit-ex-container"></div>
+    </div>
+  `;
+
+  (s.warmup||[]).forEach(ex => {
+    if (Array.isArray(ex)) {
+      const gid = exIdx++;
+      createSupersetWrapper(gid, document.getElementById('edit-warmup-container'));
+      ex.forEach(e => _editExIntoSuperset(gid, e, s.clientId));
+    } else {
+      addEditExBlock('edit-warmup-container', s.clientId, ex, true);
+    }
+  });
+
+  (s.exercises||[]).forEach(ex => {
+    if (Array.isArray(ex)) {
+      const gid = exIdx++;
+      createSupersetWrapper(gid, document.getElementById('edit-ex-container'));
+      ex.forEach(e => _editExIntoSuperset(gid, e, s.clientId));
+    } else {
+      addEditExBlock('edit-ex-container', s.clientId, ex, false);
+    }
+  });
+}
+
+function _buildEditExBlock(ex, isWarmup, clientId) {
+  const id = exIdx++;
+  const isTime = ex?.sets?.[0]?.type === 'time';
+  const div = document.createElement('div');
+  div.className = 'ex-block' + (isWarmup ? ' warmup-block' : '');
+  div.dataset.exId = id;
+  div.dataset.section = isWarmup ? 'warmup' : 'main';
+  if (clientId) div.dataset.clientId = clientId;
+  div.innerHTML = `
+    <div class="ex-drag-handle drag-handle"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);opacity:0.5;"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></div>
+    <div class="ex-block-inner">
+      ${isWarmup ? '<div class="warmup-label">Warm-Up</div>' : ''}
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+        <div class="ac-wrap" style="flex:1;">
+          <input type="text" id="en-${id}" value="${(ex?.name||'').replace(/"/g,'&quot;')}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">
+          <div class="ac-list" id="ac-${id}"></div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('.ex-block').remove()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <input type="text" id="ex-notes-${id}" value="${(ex?.exNotes||'').replace(/"/g,'&quot;')}" placeholder="Exercise notes..." style="font-size:12px;padding:6px 10px;">
+      </div>
+      <div id="type-toggle-${id}" style="margin-bottom:6px;">
+        <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="time-mode-${id}" ${isTime?'checked':''} onchange="toggleTimeMode(${id})"> Time-based
+        </label>
+      </div>
+      <div class="sets-table-wrap">
+        <table class="sets-table" id="sets-table-${id}">
+          <thead><tr>${isTime
+            ? '<th>Set</th><th>Duration (sec)</th><th>RPE</th><th></th>'
+            : `<th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th>`
+          }</tr></thead>
+          <tbody id="sets-${id}"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
+    </div>
+  `;
+  // Pre-fill sets
+  const sets = ex?.sets || [];
+  if (!sets.length) { addSet(id); addSet(id); addSet(id); }
+  else {
+    sets.forEach((set, i) => {
+      addSet(id);
+      const n = i + 1;
+      if (isTime) {
+        const d = document.getElementById(`d-${id}-${n}`); if (d) d.value = set.duration||'';
+      } else {
+        const w = document.getElementById(`w-${id}-${n}`); if (w) w.value = set.weight||'';
+        const r = document.getElementById(`r-${id}-${n}`); if (r) r.value = set.reps||'';
+      }
+      const rpe = document.getElementById(`rpe-${id}-${n}`); if (rpe && set.rpe) rpe.value = set.rpe;
+    });
+  }
+  return div;
+}
+
+function addEditExBlock(containerId, clientId, ex, isWarmup) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.appendChild(_buildEditExBlock(ex, isWarmup, clientId));
+}
+
+function _editExIntoSuperset(gid, ex, clientId) {
+  const inner = document.getElementById('ss-inner-' + gid);
+  if (!inner) return;
+  const div = _buildEditExBlock(ex, false, clientId);
+  div.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;overflow:hidden;';
+  inner.appendChild(div);
+}
+
+function addEditSuperset(clientId) {
+  const container = document.getElementById('edit-ex-container');
+  if (!container) return;
+  const gid = exIdx++;
+  createSupersetWrapper(gid, container);
+}
+
+function saveEditedSession(sessionId) {
+  const s = db.sessions.find(x => x.id === sessionId);
+  if (!s) return;
+  const date = document.getElementById('edit-s-date')?.value;
+  if (!date) { alert('Please enter a date.'); return; }
+  s.date = date;
+  s.notes = (document.getElementById('edit-s-notes')?.value||'').trim();
+
+  function readEditEx(id) {
+    const name = (document.getElementById('en-'+id)?.value||'').trim();
+    if (!name) return null;
+    const exNotes = (document.getElementById('ex-notes-'+id)?.value||'').trim();
+    const isTime = document.getElementById('time-mode-'+id)?.checked;
+    const sets = [];
+    document.querySelectorAll(`#sets-${id} tr`).forEach(row => {
+      if (isTime) {
+        const d = parseInt(document.getElementById(`d-${id}-${row.rowIndex}`)?.value)||0;
+        const rpe = parseFloat(document.getElementById(`rpe-${id}-${row.rowIndex}`)?.value)||null;
+        if (d>0) sets.push({type:'time',duration:d,rpe});
+      } else {
+        const ins = row.querySelectorAll('input[type="number"]');
+        const w = parseFloat(ins[0]?.value)||0;
+        const r = parseInt(ins[1]?.value)||0;
+        const rpe = parseFloat(ins[2]?.value)||null;
+        if (w>0||r>0) sets.push({weight:w,reps:r,rpe});
+      }
+    });
+    return {name, exNotes, sets};
+  }
+
+  function collectEditBlocks(containerId) {
+    const blocks = [];
+    const container = document.getElementById(containerId);
+    if (!container) return blocks;
+    [...container.children].forEach(child => {
+      if (child.classList.contains('ss-wrapper')) {
+        const gid = child.dataset.supersetGroup;
+        const inner = document.getElementById('ss-inner-' + gid);
+        if (!inner) return;
+        const group = [];
+        [...inner.querySelectorAll('[data-ex-id]')].forEach(block => {
+          const ex = readEditEx(block.dataset.exId); if (ex) group.push(ex);
+        });
+        if (group.length) blocks.push(group);
+      } else if (child.dataset.exId !== undefined) {
+        const ex = readEditEx(child.dataset.exId); if (ex) blocks.push(ex);
+      }
+    });
+    return blocks;
+  }
+
+  s.warmup = collectEditBlocks('edit-warmup-container');
+  s.exercises = collectEditBlocks('edit-ex-container');
+  save();
+  renderSession(sessionId);
 }
 
 // ── LOG SESSION ───────────────────────────────────────────────────────────────
