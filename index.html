@@ -1346,7 +1346,7 @@ function editSession(sessionId) {
   });
 }
 
-function _buildEditExBlock(ex, isWarmup, clientId) {
+function _buildEditExBlock(targetContainer, ex, isWarmup, clientId) {
   const id = exIdx++;
   const isTime = ex?.sets?.[0]?.type === 'time';
   const div = document.createElement('div');
@@ -1385,6 +1385,8 @@ function _buildEditExBlock(ex, isWarmup, clientId) {
       <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
     </div>
   `;
+  // Append to DOM FIRST so addSet can find tbody via getElementById
+  targetContainer.appendChild(div);
   // Pre-fill sets
   const sets = ex?.sets || [];
   if (!sets.length) { addSet(id); addSet(id); addSet(id); }
@@ -1401,21 +1403,71 @@ function _buildEditExBlock(ex, isWarmup, clientId) {
       const rpe = document.getElementById(`rpe-${id}-${n}`); if (rpe && set.rpe) rpe.value = set.rpe;
     });
   }
-  return div;
 }
 
 function addEditExBlock(containerId, clientId, ex, isWarmup) {
   const container = document.getElementById(containerId);
   if (!container) return;
-  container.appendChild(_buildEditExBlock(ex, isWarmup, clientId));
+  _buildEditExBlock(container, ex, isWarmup, clientId);
 }
 
 function _editExIntoSuperset(gid, ex, clientId) {
   const inner = document.getElementById('ss-inner-' + gid);
   if (!inner) return;
-  const div = _buildEditExBlock(ex, false, clientId);
+  const id = exIdx++;
+  const isTime = ex?.sets?.[0]?.type === 'time';
+  const div = document.createElement('div');
+  div.className = 'ex-block';
+  div.dataset.exId = id;
+  div.dataset.section = 'main';
+  if (clientId) div.dataset.clientId = clientId;
   div.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;overflow:hidden;';
+  div.innerHTML = `
+    <div class="ex-drag-handle drag-handle"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style="color:var(--muted);opacity:0.5;"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg></div>
+    <div class="ex-block-inner">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+        <div class="ac-wrap" style="flex:1;">
+          <input type="text" id="en-${id}" value="${(ex?.name||'').replace(/"/g,'&quot;')}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">
+          <div class="ac-list" id="ac-${id}"></div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('.ex-block').remove()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <input type="text" id="ex-notes-${id}" value="${(ex?.exNotes||'').replace(/"/g,'&quot;')}" placeholder="Exercise notes..." style="font-size:12px;padding:6px 10px;">
+      </div>
+      <div id="type-toggle-${id}" style="margin-bottom:6px;">
+        <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="time-mode-${id}" ${isTime?'checked':''} onchange="toggleTimeMode(${id})"> Time-based
+        </label>
+      </div>
+      <div class="sets-table-wrap">
+        <table class="sets-table" id="sets-table-${id}">
+          <thead><tr>${isTime
+            ? '<th>Set</th><th>Duration (sec)</th><th>RPE</th><th></th>'
+            : `<th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th>`
+          }</tr></thead>
+          <tbody id="sets-${id}"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
+    </div>
+  `;
   inner.appendChild(div);
+  const sets = ex?.sets || [];
+  if (!sets.length) { addSet(id); addSet(id); addSet(id); }
+  else {
+    sets.forEach((set, i) => {
+      addSet(id);
+      const n = i + 1;
+      if (isTime) {
+        const d = document.getElementById(`d-${id}-${n}`); if (d) d.value = set.duration||'';
+      } else {
+        const w = document.getElementById(`w-${id}-${n}`); if (w) w.value = set.weight||'';
+        const r = document.getElementById(`r-${id}-${n}`); if (r) r.value = set.reps||'';
+      }
+      const rpe = document.getElementById(`rpe-${id}-${n}`); if (rpe && set.rpe) rpe.value = set.rpe;
+    });
+  }
 }
 
 function addEditSuperset(clientId) {
