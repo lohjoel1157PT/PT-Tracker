@@ -1640,8 +1640,9 @@ function loadTemplate(clientId) {
   const t = (db.templates||[]).find(x=>x.id===templateId);
   if (!t) return;
 
-  // find last session that used this same template
+  // find last two sessions that used this same template
   const lastSession = getLastTemplateSession(clientId, templateId);
+  const secondLastSession = getSecondLastTemplateSession(clientId, templateId);
 
   // clear existing exercises for this client
   const container = document.getElementById('ex-container-'+clientId);
@@ -1656,8 +1657,9 @@ function loadTemplate(clientId) {
     const id = exIdx++;
     const isTime = ex.type === 'time';
     const prevEx = getPrevSetData(lastSession, ex.name);
+    const secondPrevEx = getPrevSetData(secondLastSession, ex.name);
 
-    // build per-set reference rows
+    // build per-set reference rows for last session
     const prevRows = (ex.sets||[]).map((tplSet, i) => {
       const prevSet = prevEx?.sets?.[i];
       if (!prevSet) return '';
@@ -1667,10 +1669,32 @@ function loadTemplate(clientId) {
       return `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${prevSet.weight||0}${unitLabel()} × ${prevSet.reps||0} reps</strong>${tplSet.targetReps?` <span style="color:var(--accent);">(target: ${tplSet.targetReps})</span>`:''}</div>`;
     }).join('');
 
+    // weight drop detection
+    const lastMaxW = prevEx ? Math.max(...(prevEx.sets||[]).filter(s=>!s.type).map(s=>s.weight||0), 0) : 0;
+    const secondMaxW = secondPrevEx ? Math.max(...(secondPrevEx.sets||[]).filter(s=>!s.type).map(s=>s.weight||0), 0) : 0;
+    const hasDrop = !isTime && lastMaxW > 0 && secondMaxW > 0 && lastMaxW < secondMaxW;
+
+    const secondPrevRows = hasDrop ? (secondPrevEx.sets||[]).map((set,i)=>
+      `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${set.weight||0}${unitLabel()} × ${set.reps||0} reps</strong></div>`
+    ).join('') : '';
+
+    // cross-template best weight
+    const bestInfo = !isTime ? getBestWeightForExercise(clientId, ex.name) : null;
+    const bestIsOther = bestInfo && bestInfo.maxWeight > lastMaxW && bestInfo.session?.id !== lastSession?.id;
+    const bestTemplateName = bestIsOther ? ((db.templates||[]).find(x=>x.id===bestInfo.session?.templateId)?.name || '') : '';
+
     const prevBlock = prevEx ? `
       <div style="background:rgba(10,132,255,0.08);border:1px solid rgba(10,132,255,0.2);border-radius:7px;padding:8px 10px;margin-bottom:8px;">
         <div style="font-size:10px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Last ${t.name} — ${fmtDate(lastSession.date)}</div>
         ${prevRows}
+        ${hasDrop ? `
+          <div style="border-top:1px solid rgba(10,132,255,0.15);margin:6px 0 4px;"></div>
+          <div style="font-size:10px;color:var(--orange);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Before drop — ${fmtDate(secondLastSession.date)}</div>
+          ${secondPrevRows}` : ''}
+        ${bestIsOther ? `
+          <div style="border-top:1px solid rgba(10,132,255,0.15);margin:6px 0 4px;"></div>
+          <div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">Best overall${bestTemplateName?' ('+bestTemplateName+')':''} — ${fmtDate(bestInfo.session.date)}</div>
+          <div style="font-size:11px;color:var(--muted);">Peak: <strong style="color:var(--text);">${bestInfo.maxWeight}${unitLabel()}</strong></div>` : ''}
       </div>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">No previous ${t.name} data yet</div>`;
 
     const div = document.createElement('div');
@@ -2370,15 +2394,30 @@ if (!db.templates) db.templates = [];
 function renderTemplatesList(clientId) {
   const temps = (db.templates||[]).filter(t=>t.clientId===clientId);
   if (!temps.length) return '<div class="empty"><p>No templates yet. Create your first workout template!</p></div>';
+
+  // Determine "next up" = template done least recently (or never used)
+  const withDates = temps.map(t=>({t, last: getLastTemplateSession(clientId, t.id)}));
+  const nextUp = withDates.slice().sort((a,b)=>{
+    if (!a.last && !b.last) return 0;
+    if (!a.last) return -1;
+    if (!b.last) return 1;
+    return a.last.date.localeCompare(b.last.date);
+  })[0]?.t;
+
   return temps.map(t=>{
-    const allEx = [...(t.warmup||[]), ...(t.exercises||[]).flat()];
-    return `<div class="block-card" style="margin-bottom:10px;">
+    const lastSession = getLastTemplateSession(clientId, t.id);
+    const isNext = nextUp?.id === t.id;
+    return `<div class="block-card" style="margin-bottom:10px;${isNext?'border-color:rgba(48,209,88,0.4);':''}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
-        <div>
-          <div style="font-size:15px;font-weight:600;">${t.name}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:15px;font-weight:600;">${t.name}</span>
+            ${isNext?`<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--green);background:rgba(48,209,88,0.12);border:1px solid rgba(48,209,88,0.3);border-radius:20px;padding:2px 8px;">Next Up</span>`:''}
+          </div>
           ${t.notes?`<div style="font-size:12px;color:var(--muted);margin-top:2px;">${t.notes}</div>`:''}
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;">${lastSession?'Last done: '+fmtDate(lastSession.date):'Not done yet'}</div>
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;">
+        <div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;">
           <button class="btn btn-secondary btn-sm" onclick="openTemplateModal('${clientId}','${t.id}')">Edit</button>
           <button class="btn btn-secondary btn-sm" onclick="duplicateTemplate('${t.id}','${clientId}')">Duplicate</button>
           <button class="btn btn-danger btn-sm" onclick="deleteTemplate('${t.id}','${clientId}')">Delete</button>
@@ -2687,10 +2726,28 @@ function getLastTemplateSession(clientId, templateId) {
     .sort((a,b) => b.date.localeCompare(a.date))[0] || null;
 }
 
+function getSecondLastTemplateSession(clientId, templateId) {
+  return db.sessions
+    .filter(s => s.clientId===clientId && s.templateId===templateId)
+    .sort((a,b) => b.date.localeCompare(a.date))[1] || null;
+}
+
 function getPrevSetData(session, exName) {
   if (!session) return null;
   const allEx = [...(session.warmup||[]), ...(session.exercises||[]).flat()];
   return allEx.find(e=>e.name.toLowerCase()===exName.toLowerCase()) || null;
+}
+
+function getBestWeightForExercise(clientId, exName) {
+  let bestWeight = -1, bestSession = null;
+  db.sessions.filter(s=>s.clientId===clientId).forEach(s=>{
+    const allEx = [...(s.warmup||[]), ...(s.exercises||[]).flat()];
+    const ex = allEx.find(e=>e.name.toLowerCase()===exName.toLowerCase());
+    if (!ex) return;
+    const maxW = Math.max(...(ex.sets||[]).filter(set=>!set.type).map(set=>set.weight||0), 0);
+    if (maxW > bestWeight) { bestWeight = maxW; bestSession = s; }
+  });
+  return bestSession ? {session: bestSession, maxWeight: bestWeight} : null;
 }
 
 // ── TRAINING PLAN ─────────────────────────────────────────────────────────────
@@ -2964,6 +3021,27 @@ function openModal(name) { document.getElementById('modal-'+name).classList.add(
 function closeModal(name) { document.getElementById('modal-'+name).classList.remove('open'); }
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m) closeModal(m.id.replace('modal-','')); }));
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.querySelectorAll('.modal-bg.open').forEach(m=>m.classList.remove('open')); });
+
+// Swipe down to close bottom-sheet modals on mobile
+let _swipeTouchY = 0, _swipeModal = null;
+document.addEventListener('touchstart', e=>{
+  const modal = e.target.closest('.modal');
+  if (!modal) return;
+  const rect = modal.getBoundingClientRect();
+  if (e.touches[0].clientY - rect.top < 60) {
+    _swipeTouchY = e.touches[0].clientY;
+    _swipeModal = modal;
+  }
+}, {passive:true});
+document.addEventListener('touchend', e=>{
+  if (!_swipeModal) return;
+  const delta = e.changedTouches[0].clientY - _swipeTouchY;
+  if (delta > 70) {
+    const bg = _swipeModal.closest('.modal-bg');
+    if (bg) bg.classList.remove('open');
+  }
+  _swipeModal = null;
+}, {passive:true});
 
 // ── SHARING ───────────────────────────────────────────────────────────────────
 function openShareModal(clientId) {
