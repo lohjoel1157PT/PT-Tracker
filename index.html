@@ -649,19 +649,43 @@
 </div>
 <div class="modal-bg" id="modal-share">
   <div class="modal">
-    <h3>Share Client</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Share this link with another coach. They can view sessions, progress, and log new sessions for this client only.</p>
-    <div class="form-group">
-      <label>Share Link</label>
+    <h3>Share</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;"><strong id="share-client-name"></strong></p>
+
+    <div style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <div style="width:32px;height:32px;border-radius:8px;background:rgba(10,132,255,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:1px;">Coach Link</div>
+          <div style="font-size:11px;color:var(--muted);">Can log &amp; edit sessions for this client only</div>
+        </div>
+      </div>
       <div style="display:flex;gap:8px;">
-        <input id="share-link-input" type="text" readonly style="flex:1;font-size:12px;color:var(--muted);">
-        <button class="btn btn-primary btn-sm" onclick="copyShareLink()">Copy</button>
+        <input id="share-coach-link" type="text" readonly style="flex:1;font-size:11px;color:var(--muted);padding:8px 10px;">
+        <button class="btn btn-secondary btn-sm" onclick="copyShareLink('coach')">Copy</button>
       </div>
     </div>
-    <div id="share-copied" style="font-size:13px;color:var(--green);display:none;margin-top:6px;">Copied to clipboard!</div>
-    <hr class="divider">
-    <p style="font-size:12px;color:var(--muted);">The other coach opens this link and can only see and log sessions for this client. They cannot see your other clients.</p>
-    <div class="modal-actions">
+
+    <div style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <div style="width:32px;height:32px;border-radius:8px;background:rgba(48,209,88,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/></svg>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:1px;">Client Link</div>
+          <div style="font-size:11px;color:var(--muted);">Simple view — log their own workouts when travelling</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <input id="share-client-link" type="text" readonly style="flex:1;font-size:11px;color:var(--muted);padding:8px 10px;">
+        <button class="btn btn-secondary btn-sm" onclick="copyShareLink('client')">Copy</button>
+      </div>
+    </div>
+
+    <div id="share-copied" style="font-size:13px;color:var(--green);display:none;margin-top:4px;text-align:center;">Copied!</div>
+    <div class="modal-actions" style="margin-top:8px;">
       <button class="btn btn-secondary" onclick="closeModal('share')">Close</button>
     </div>
   </div>
@@ -829,7 +853,15 @@ function loadData() {
         if (!db.weightLogs) db.weightLogs = [];
         if (!db.templates) db.templates = [];
         localStorage.setItem('pt_db_v2', JSON.stringify(db));
-        renderDash();
+        if (window._sharedClientId) {
+          if (window._sharedRole === 'client') {
+            renderClientSelfPage(window._sharedClientId);
+          } else {
+            nav('client', window._sharedClientId);
+          }
+        } else {
+          renderDash();
+        }
       }
       showSyncStatus('saved', 'Synced');
       if (syncTimeout) clearTimeout(syncTimeout);
@@ -3074,23 +3106,24 @@ document.addEventListener('touchend', e=>{
 function openShareModal(clientId) {
   const c = db.clients.find(x=>x.id===clientId);
   if (!c) return;
-  const baseUrl = window.location.href.split('?')[0];
-  const shareUrl = `${baseUrl}?share=${btoa(clientId)}`;
-  document.getElementById('share-link-input').value = shareUrl;
+  const base = window.location.href.split('?')[0];
+  const enc = btoa(clientId);
+  document.getElementById('share-client-name').textContent = c.name;
+  document.getElementById('share-coach-link').value = `${base}?share=${enc}&role=coach`;
+  document.getElementById('share-client-link').value = `${base}?share=${enc}&role=client`;
   document.getElementById('share-copied').style.display = 'none';
   openModal('share');
 }
 
-function copyShareLink() {
-  const input = document.getElementById('share-link-input');
+function copyShareLink(role) {
+  const input = document.getElementById(role==='coach' ? 'share-coach-link' : 'share-client-link');
   navigator.clipboard.writeText(input.value).then(() => {
     document.getElementById('share-copied').style.display = 'block';
-    setTimeout(() => document.getElementById('share-copied').style.display = 'none', 3000);
+    setTimeout(() => document.getElementById('share-copied').style.display = 'none', 2500);
   }).catch(() => {
-    input.select();
-    document.execCommand('copy');
+    input.select(); document.execCommand('copy');
     document.getElementById('share-copied').style.display = 'block';
-    setTimeout(() => document.getElementById('share-copied').style.display = 'none', 3000);
+    setTimeout(() => document.getElementById('share-copied').style.display = 'none', 2500);
   });
 }
 
@@ -3098,27 +3131,253 @@ function copyShareLink() {
 function checkSharedView() {
   const params = new URLSearchParams(window.location.search);
   const shareParam = params.get('share');
+  const role = params.get('role') || 'coach';
   if (!shareParam) return false;
   try {
     const clientId = atob(shareParam);
-    const c = db.clients.find(x=>x.id===clientId);
-    if (!c) return false;
-    // Hide sidebar and show shared view
+    window._sharedClientId = clientId;
+    window._sharedRole = role;
+
+    // Hide sidebar/nav
     document.querySelector('.sidebar').style.display = 'none';
     document.querySelector('.bottom-nav').style.display = 'none';
     document.querySelector('.main').style.marginLeft = '0';
-    // Restrict to this client only — filter sessions and hide other clients
-    window._sharedClientId = clientId;
-    // Override nav to only allow log and client detail
-    nav('client', clientId);
-    // Add shared banner
-    const banner = document.createElement('div');
-    banner.style.cssText = 'background:rgba(10,132,255,0.1);border-bottom:1px solid rgba(10,132,255,0.2);padding:10px 16px;font-size:13px;color:var(--accent);text-align:center;position:fixed;top:0;left:0;right:0;z-index:200;';
-    banner.innerHTML = `Shared view — ${c.name} only`;
-    document.body.prepend(banner);
-    document.querySelector('.main').style.paddingTop = '50px';
+    document.querySelector('.main').style.paddingBottom = '0';
+
+    if (role === 'client') {
+      renderClientSelfView(clientId);
+    } else {
+      // Coach view: add banner, nav will be called after data loads
+      const banner = document.createElement('div');
+      banner.id = 'share-banner';
+      banner.style.cssText = 'background:rgba(10,132,255,0.1);border-bottom:1px solid rgba(10,132,255,0.2);padding:10px 16px;font-size:13px;color:var(--accent);text-align:center;position:sticky;top:0;z-index:200;';
+      banner.innerHTML = 'Coach view — restricted to this client';
+      document.querySelector('.main').prepend(banner);
+    }
     return true;
   } catch(e) { return false; }
+}
+
+// ── CLIENT SELF-LOG VIEW ──────────────────────────────────────────────────────
+function renderClientSelfView(clientId) {
+  const main = document.querySelector('.main');
+  main.innerHTML = `<div id="client-self-view" style="max-width:520px;margin:0 auto;padding:16px;"></div>`;
+  renderClientSelfPage(clientId);
+}
+
+function renderClientSelfPage(clientId) {
+  const el = document.getElementById('client-self-view');
+  if (!el) return;
+  const c = db.clients.find(x=>x.id===clientId);
+  if (!c) { el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Client not found. Check the link.</div>'; return; }
+  const temps = (db.templates||[]).filter(t=>t.clientId===clientId);
+  const sessions = (db.sessions||[]).filter(s=>s.clientId===clientId).sort((a,b)=>b.date.localeCompare(a.date));
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border);">
+      <div class="avatar" style="width:48px;height:48px;font-size:20px;">${(c.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+      <div>
+        <div style="font-size:20px;font-weight:700;">${c.name}</div>
+        <div style="font-size:13px;color:var(--muted);">Your Workouts</div>
+      </div>
+    </div>
+
+    ${temps.length ? `
+    <div style="margin-bottom:28px;">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:12px;">Your Templates</div>
+      ${(()=>{
+        const withDates = temps.map(t=>({t, last: getLastTemplateSession(clientId, t.id)}));
+        const nextUp = withDates.slice().sort((a,b)=>{
+          if (!a.last && !b.last) return 0;
+          if (!a.last) return -1;
+          if (!b.last) return 1;
+          return a.last.date.localeCompare(b.last.date);
+        })[0]?.t;
+        return temps.map(t => {
+          const last = getLastTemplateSession(clientId, t.id);
+          const isNext = nextUp?.id === t.id;
+          const exList = (t.exercises||[]).map(e=>Array.isArray(e)?e.map(x=>x.name).join(' + '):e.name).join(' · ');
+          return `<div style="background:var(--surface2);border:1px solid ${isNext?'rgba(48,209,88,0.4)':'var(--border)'};border-radius:14px;padding:16px;margin-bottom:12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:17px;font-weight:700;">${t.name}</span>
+                ${isNext?`<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--green);background:rgba(48,209,88,0.12);border:1px solid rgba(48,209,88,0.3);border-radius:20px;padding:2px 8px;">Do This Next</span>`:''}
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">${last?'Last done: '+fmtDate(last.date):'Not done yet'}</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6;">${exList}</div>
+            <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="startClientSelfLog('${clientId}','${t.id}')">Start Workout</button>
+          </div>`;
+        }).join('');
+      })()}
+    </div>` : `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:24px;text-align:center;margin-bottom:28px;"><p style="color:var(--muted);margin:0;">No templates yet — your trainer will set these up for you.</p></div>`}
+
+    <div>
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:12px;">Recent Sessions</div>
+      ${sessions.length ? sessions.slice(0,5).map(s=>{
+        const exList = (s.exercises||[]).flat().filter(e=>e&&e.name).map(e=>e.name).slice(0,3).join(', ');
+        return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:14px;font-weight:600;">${fmtDate(s.date)}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px;">${exList||'No exercises recorded'}</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="viewClientSelfSession('${clientId}','${s.id}')">View</button>
+        </div>`;
+      }).join('') : `<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">No sessions yet.</div>`}
+    </div>
+  `;
+}
+
+function startClientSelfLog(clientId, templateId) {
+  const el = document.getElementById('client-self-view');
+  const c = db.clients.find(x=>x.id===clientId);
+  const t = (db.templates||[]).find(x=>x.id===templateId);
+  if (!el || !c || !t) return;
+
+  const today = new Date().toISOString().slice(0,10);
+  const lastSession = getLastTemplateSession(clientId, templateId);
+
+  // Build exercise input blocks for each exercise in the template
+  function buildSelfEx(ex) {
+    const isTime = ex.type === 'time';
+    const prevEx = getPrevSetData(lastSession, ex.name);
+    const numSets = ex.sets?.length || 3;
+    const rows = Array.from({length: numSets}, (_,i) => {
+      const prev = prevEx?.sets?.[i];
+      if (isTime) return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <span style="font-size:13px;color:var(--muted);width:28px;">S${i+1}</span>
+        <input type="number" placeholder="seconds" ${prev?`value="${prev.duration||''}"`:''} style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-ex="${ex.name}" data-set="${i}" data-field="duration">
+        <span style="font-size:13px;color:var(--muted);">sec</span>
+      </div>`;
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-size:13px;color:var(--muted);width:28px;">S${i+1}</span>
+        <input type="number" placeholder="kg" ${prev?`value="${prev.weight||''}"`:''} style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-ex="${ex.name}" data-set="${i}" data-field="weight">
+        <span style="font-size:13px;color:var(--muted);">×</span>
+        <input type="number" placeholder="reps" ${prev?`value="${prev.reps||''}"`:''} style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-ex="${ex.name}" data-set="${i}" data-field="reps">
+      </div>`;
+    }).join('');
+    const prevInfo = prevEx && !isTime ? `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Last time: ${(prevEx.sets||[]).map(s=>`${s.weight||0}kg×${s.reps||0}`).join(', ')}</div>` : '';
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:${prevInfo?2:8}px;">${ex.name}</div>
+      ${ex.notes?`<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:6px;">${ex.notes}</div>`:''}
+      ${prevInfo}
+      ${rows}
+    </div>`;
+  }
+
+  function buildSelfGroup(exArr) {
+    return `<div style="border:1px solid rgba(48,209,88,0.3);border-radius:14px;overflow:hidden;margin-bottom:12px;">
+      <div style="background:rgba(48,209,88,0.08);padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--green);">Superset</div>
+      <div style="padding:10px;">${exArr.map(buildSelfEx).join('<div style="height:1px;background:var(--border);margin:4px 0;"></div>')}</div>
+    </div>`;
+  }
+
+  const mainHtml = (t.exercises||[]).map(ex=>Array.isArray(ex)?buildSelfGroup(ex):buildSelfEx(ex)).join('');
+  const warmupHtml = (t.warmup||[]).length ? `
+    <div style="margin-bottom:20px;">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--orange);margin-bottom:10px;">Warm-Up</div>
+      ${(t.warmup||[]).map(ex=>Array.isArray(ex)?buildSelfGroup(ex):buildSelfEx(ex)).join('')}
+    </div>` : '';
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button onclick="renderClientSelfPage('${clientId}')" style="background:none;border:none;color:var(--accent);font-size:15px;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Back
+      </button>
+    </div>
+    <div style="margin-bottom:20px;">
+      <div style="font-size:22px;font-weight:700;">${t.name}</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:4px;">${c.name} · <input type="date" id="self-log-date" value="${today}" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:0;"></div>
+    </div>
+    ${warmupHtml}
+    <div style="margin-bottom:20px;">${mainHtml}</div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:6px;">Session notes</label>
+      <textarea id="self-log-notes" placeholder="How did it go? Any notes..." style="width:100%;box-sizing:border-box;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;min-height:80px;resize:vertical;font-family:inherit;"></textarea>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:16px;font-size:16px;" onclick="saveClientSelfLog('${clientId}','${templateId}')">Save Session</button>
+  `;
+}
+
+function saveClientSelfLog(clientId, templateId) {
+  const date = document.getElementById('self-log-date')?.value;
+  if (!date) { alert('Please set a date.'); return; }
+  const notes = (document.getElementById('self-log-notes')?.value||'').trim();
+
+  const t = (db.templates||[]).find(x=>x.id===templateId);
+  if (!t) return;
+
+  function collectSelfEx(ex) {
+    const isTime = ex.type === 'time';
+    const sets = [];
+    const inputs = document.querySelectorAll(`[data-self-ex="${ex.name}"]`);
+    const numSets = ex.sets?.length || 3;
+    for (let i = 0; i < numSets; i++) {
+      if (isTime) {
+        const d = parseInt(document.querySelector(`[data-self-ex="${ex.name}"][data-set="${i}"][data-field="duration"]`)?.value)||0;
+        if (d) sets.push({type:'time', duration:d, rpe:null});
+      } else {
+        const w = parseFloat(document.querySelector(`[data-self-ex="${ex.name}"][data-set="${i}"][data-field="weight"]`)?.value)||0;
+        const r = parseInt(document.querySelector(`[data-self-ex="${ex.name}"][data-set="${i}"][data-field="reps"]`)?.value)||0;
+        if (w||r) sets.push({weight:w, reps:r, rpe:null});
+      }
+    }
+    return {name:ex.name, exNotes:ex.notes||'', sets};
+  }
+
+  function collectSelfGroup(exArr) { return exArr.map(collectSelfEx); }
+
+  const exercises = (t.exercises||[]).map(ex=>Array.isArray(ex)?collectSelfGroup(ex):collectSelfEx(ex));
+  const warmup = (t.warmup||[]).map(ex=>Array.isArray(ex)?collectSelfGroup(ex):collectSelfEx(ex));
+
+  if (!db.sessions) db.sessions = [];
+  db.sessions.push({id:uid(), clientId, date, notes, warmup, exercises, deductedPackage:false, templateId, blockId:null, blockWeek:null});
+  save();
+
+  const el = document.getElementById('client-self-view');
+  el.innerHTML = `<div style="text-align:center;padding:60px 20px;">
+    <div style="font-size:48px;margin-bottom:16px;">💪</div>
+    <div style="font-size:22px;font-weight:700;margin-bottom:8px;">Session saved!</div>
+    <div style="font-size:14px;color:var(--muted);margin-bottom:28px;">Great work. Keep it up!</div>
+    <button class="btn btn-primary" style="min-width:160px;justify-content:center;" onclick="renderClientSelfPage('${clientId}')">Back to Workouts</button>
+  </div>`;
+}
+
+function viewClientSelfSession(clientId, sessionId) {
+  const el = document.getElementById('client-self-view');
+  const s = db.sessions.find(x=>x.id===sessionId);
+  if (!s||!el) return;
+
+  function renderSelfSets(sets) {
+    return (sets||[]).map((set,i)=>{
+      const label = set.type==='time' ? `${set.duration}s` : `${set.weight||0}kg × ${set.reps||0} reps`;
+      return `<span style="display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:13px;margin:3px 3px 3px 0;">Set ${i+1}: <strong>${label}</strong></span>`;
+    }).join('');
+  }
+
+  function renderSelfExSection(exList) {
+    return exList.map(ex=>{
+      if (Array.isArray(ex)) return `<div style="border:1px solid rgba(48,209,88,0.3);border-radius:12px;overflow:hidden;margin-bottom:10px;">
+        <div style="background:rgba(48,209,88,0.08);padding:8px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--green);">Superset</div>
+        <div style="padding:12px;">${ex.map(e=>`<div style="margin-bottom:10px;"><div style="font-size:14px;font-weight:600;margin-bottom:4px;">${e.name}</div>${renderSelfSets(e.sets)}</div>`).join('<hr style="border:none;border-top:1px solid var(--border);margin:8px 0;">')}</div>
+      </div>`;
+      return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">${ex.name}</div>
+        ${renderSelfSets(ex.sets)}
+      </div>`;
+    }).join('');
+  }
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button onclick="renderClientSelfPage('${clientId}')" style="background:none;border:none;color:var(--accent);font-size:15px;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Back
+      </button>
+    </div>
+    <div style="font-size:22px;font-weight:700;margin-bottom:4px;">${fmtDate(s.date)}</div>
+    ${s.notes?`<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">${s.notes}</div>`:'<div style="margin-bottom:16px;"></div>'}
+    ${renderSelfExSection(s.exercises||[])}
+  `;
 }
 
 // ── EXPORT / IMPORT ───────────────────────────────────────────────────────────
