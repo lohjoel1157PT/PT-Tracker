@@ -242,12 +242,16 @@
         border-radius: 20px 20px 0 0;
         border-left: none; border-right: none; border-bottom: none;
         box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
+        will-change: transform;
       }
+      .modal-bg.open .modal { animation: sheet-up 0.32s cubic-bezier(0.32,0.72,0,1) both; }
+      @keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
       .modal::before {
         content: ''; display: block;
         width: 36px; height: 4px;
         background: var(--border); border-radius: 2px;
         margin: 12px auto 18px;
+        cursor: grab;
       }
       .modal h3 { margin-bottom: 16px; }
       .modal-actions { flex-direction: row; }
@@ -3022,8 +3026,8 @@ function closeModal(name) { document.getElementById('modal-'+name).classList.rem
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m) closeModal(m.id.replace('modal-','')); }));
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.querySelectorAll('.modal-bg.open').forEach(m=>m.classList.remove('open')); });
 
-// Swipe down to close bottom-sheet modals on mobile
-let _swipeTouchY = 0, _swipeModal = null;
+// Swipe down to close bottom-sheet modals on mobile (drag-follows-finger)
+let _swipeTouchY = 0, _swipeModal = null, _swipeBg = null;
 document.addEventListener('touchstart', e=>{
   const modal = e.target.closest('.modal');
   if (!modal) return;
@@ -3031,16 +3035,39 @@ document.addEventListener('touchstart', e=>{
   if (e.touches[0].clientY - rect.top < 60) {
     _swipeTouchY = e.touches[0].clientY;
     _swipeModal = modal;
+    _swipeBg = modal.closest('.modal-bg');
+    modal.style.transition = 'none';
+    modal.style.animation = 'none';
   }
+}, {passive:true});
+document.addEventListener('touchmove', e=>{
+  if (!_swipeModal) return;
+  const delta = Math.max(0, e.touches[0].clientY - _swipeTouchY);
+  _swipeModal.style.transform = `translateY(${delta}px)`;
+  if (_swipeBg) _swipeBg.style.background = `rgba(0,0,0,${Math.max(0, 0.65 - delta/300)})`;
 }, {passive:true});
 document.addEventListener('touchend', e=>{
   if (!_swipeModal) return;
+  const modal = _swipeModal, bg = _swipeBg;
+  _swipeModal = null; _swipeBg = null;
   const delta = e.changedTouches[0].clientY - _swipeTouchY;
-  if (delta > 70) {
-    const bg = _swipeModal.closest('.modal-bg');
-    if (bg) bg.classList.remove('open');
+  if (delta > 100) {
+    modal.style.transition = 'transform 0.25s cubic-bezier(0.4,0,1,1)';
+    modal.style.transform = 'translateY(110%)';
+    if (bg) { bg.style.transition = 'background 0.25s'; bg.style.background = 'rgba(0,0,0,0)'; }
+    setTimeout(()=>{
+      if (bg) { bg.classList.remove('open'); bg.style.background=''; bg.style.transition=''; }
+      modal.style.transition=''; modal.style.transform=''; modal.style.animation='';
+    }, 260);
+  } else {
+    modal.style.transition = 'transform 0.35s cubic-bezier(0.34,1.56,0.64,1)';
+    modal.style.transform = 'translateY(0)';
+    if (bg) { bg.style.transition='background 0.35s'; bg.style.background=''; }
+    setTimeout(()=>{
+      modal.style.transition=''; modal.style.animation='';
+      if (bg) bg.style.transition='';
+    }, 350);
   }
-  _swipeModal = null;
 }, {passive:true});
 
 // ── SHARING ───────────────────────────────────────────────────────────────────
