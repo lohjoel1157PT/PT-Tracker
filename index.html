@@ -3103,37 +3103,16 @@ document.addEventListener('touchend', e=>{
 }, {passive:true});
 
 // ── SHARING ───────────────────────────────────────────────────────────────────
-async function shortenUrl(url) {
-  try {
-    const r = await fetch('https://tinyurl.com/api-create.php?url=' + encodeURIComponent(url));
-    if (r.ok) { const t = await r.text(); if (t.startsWith('http')) return t.trim(); }
-  } catch(e) {}
-  return url;
-}
-
-function setShareInput(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.value = text;
-}
-
 function openShareModal(clientId) {
   const c = db.clients.find(x=>x.id===clientId);
   if (!c) return;
   const base = window.location.href.split('?')[0];
   const enc = btoa(clientId);
-  const coachUrl = `${base}?share=${enc}&role=coach`;
-  const clientUrl = `${base}?share=${enc}&role=client`;
-
   document.getElementById('share-client-name').textContent = c.name;
-  setShareInput('share-coach-link', 'Shortening link…');
-  setShareInput('share-client-link', 'Shortening link…');
+  document.getElementById('share-coach-link').value = `${base}?share=${enc}&role=coach`;
+  document.getElementById('share-client-link').value = `${base}?share=${enc}&role=client`;
   document.getElementById('share-copied').style.display = 'none';
   openModal('share');
-
-  Promise.all([shortenUrl(coachUrl), shortenUrl(clientUrl)]).then(([coach, client]) => {
-    setShareInput('share-coach-link', coach);
-    setShareInput('share-client-link', client);
-  });
 }
 
 function copyShareLink(role) {
