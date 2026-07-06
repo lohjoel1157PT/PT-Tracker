@@ -2460,8 +2460,10 @@ function renderTemplatesList(clientId) {
   const temps = (db.templates||[]).filter(t=>t.clientId===clientId);
   if (!temps.length) return '<div class="empty"><p>No templates yet. Create your first workout template!</p></div>';
 
-  // Determine "next up" = template done least recently (or never used)
-  const withDates = temps.map(t=>({t, last: getLastTemplateSession(clientId, t.id)}));
+  // Determine "next up" = in-rotation template done least recently (or never used)
+  const withDates = temps
+    .filter(t => t.inRotation !== false)
+    .map(t=>({t, last: getLastTemplateSession(clientId, t.id)}));
   const nextUp = withDates.slice().sort((a,b)=>{
     if (!a.last && !b.last) return 0;
     if (!a.last) return -1;
@@ -2472,12 +2474,14 @@ function renderTemplatesList(clientId) {
   return temps.map(t=>{
     const lastSession = getLastTemplateSession(clientId, t.id);
     const isNext = nextUp?.id === t.id;
+    const inRotation = t.inRotation !== false;
     return `<div class="block-card" style="margin-bottom:10px;${isNext?'border-color:rgba(48,209,88,0.4);':''}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span style="font-size:15px;font-weight:600;">${t.name}</span>
             ${isNext?`<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--green);background:rgba(48,209,88,0.12);border:1px solid rgba(48,209,88,0.3);border-radius:20px;padding:2px 8px;">Next Up</span>`:''}
+            <button onclick="toggleTemplateRotation('${t.id}','${clientId}')" style="font-size:11px;font-weight:700;border-radius:20px;padding:3px 10px;border:1px solid;cursor:pointer;color:${inRotation?'var(--green)':'var(--muted)'};background:${inRotation?'rgba(48,209,88,0.1)':'rgba(100,100,110,0.1)'};border-color:${inRotation?'rgba(48,209,88,0.3)':'rgba(100,100,110,0.3)'};">${inRotation?'● In Rotation':'○ Paused'}</button>
           </div>
           ${t.notes?`<div style="font-size:12px;color:var(--muted);margin-top:2px;">${t.notes}</div>`:''}
           <div style="font-size:11px;color:var(--muted);margin-top:4px;">${lastSession?'Last done: '+fmtDate(lastSession.date):'Not done yet'}</div>
@@ -2775,6 +2779,13 @@ function duplicateTemplate(id, clientId) {
   copy.id = uid();
   copy.name = 'Copy of ' + src.name;
   db.templates.push(copy);
+  save(); renderClient(clientId);
+}
+
+function toggleTemplateRotation(id, clientId) {
+  const t = (db.templates||[]).find(x=>x.id===id);
+  if (!t) return;
+  t.inRotation = t.inRotation === false ? true : false;
   save(); renderClient(clientId);
 }
 
@@ -3215,7 +3226,9 @@ function renderClientSelfPage(clientId) {
     <div style="margin-bottom:28px;">
       <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:12px;">Your Templates</div>
       ${(()=>{
-        const withDates = temps.map(t=>({t, last: getLastTemplateSession(clientId, t.id)}));
+        const withDates = temps
+          .filter(t => t.inRotation !== false)
+          .map(t=>({t, last: getLastTemplateSession(clientId, t.id)}));
         const nextUp = withDates.slice().sort((a,b)=>{
           if (!a.last && !b.last) return 0;
           if (!a.last) return -1;
