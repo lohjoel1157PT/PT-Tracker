@@ -1858,6 +1858,20 @@ function loadTemplate(clientId) {
     }
   });
 
+  // Show previous session notes as a reference above the session notes textarea
+  const existingHint = document.getElementById('prev-session-notes-'+clientId);
+  if (existingHint) existingHint.remove();
+  if (lastSession?.notes) {
+    const textarea = document.getElementById('log-notes-'+clientId);
+    if (textarea) {
+      const hint = document.createElement('div');
+      hint.id = 'prev-session-notes-'+clientId;
+      hint.style.cssText = 'background:rgba(10,132,255,0.08);border:1px solid rgba(10,132,255,0.2);border-radius:7px;padding:8px 10px;margin-bottom:8px;font-size:12px;';
+      hint.innerHTML = `<div style="font-size:10px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px;">Notes from last ${t.name} — ${fmtDate(lastSession.date)}</div><div style="color:var(--muted);">${lastSession.notes}</div>`;
+      textarea.insertAdjacentElement('beforebegin', hint);
+    }
+  }
+
   sel.value = '';
 }
 
@@ -3015,19 +3029,58 @@ function renderChart() {
 function renderLibrary() {
   const grouped = {};
   db.library.forEach(e=>{ if(!grouped[e.group]) grouped[e.group]=[]; grouped[e.group].push(e); });
-  document.getElementById('lib-list').innerHTML = Object.entries(grouped).map(([g,exs])=>`
-    <div style="margin-bottom:18px;">
-      <div style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:7px;">${g}</div>
-      ${exs.map(e=>`
+
+  const libNames = new Set(db.library.map(e=>e.name.toLowerCase()));
+
+  // Collect all unique exercise names used in sessions + templates
+  const sessionNames = new Set();
+  db.sessions.forEach(s => {
+    function collect(arr) {
+      arr.forEach(e => {
+        if (Array.isArray(e)) e.forEach(x => x.name && sessionNames.add(x.name));
+        else if (e.name) sessionNames.add(e.name);
+      });
+    }
+    collect(s.exercises || []); collect(s.warmup || []);
+  });
+  (db.templates||[]).forEach(t => {
+    function collectTpl(arr) {
+      arr.forEach(e => {
+        if (e._ss) (e.ex||[]).forEach(x => x.name && sessionNames.add(x.name));
+        else if (e.name) sessionNames.add(e.name);
+      });
+    }
+    collectTpl(t.exercises || []); collectTpl(t.warmup || []);
+  });
+  const nonLibNames = [...sessionNames].filter(n => !libNames.has(n.toLowerCase())).sort((a,b)=>a.localeCompare(b));
+
+  document.getElementById('lib-list').innerHTML =
+    Object.entries(grouped).map(([g,exs])=>`
+      <div style="margin-bottom:18px;">
+        <div style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:7px;">${g}</div>
+        ${exs.map(e=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);">
+            <div>
+              <span style="font-size:14px;">${e.name}</span>
+              <span style="font-size:11px;color:var(--muted);margin-left:8px;background:var(--surface2);padding:2px 7px;border-radius:10px;">${e.type||'weight'}</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn btn-secondary btn-sm" onclick="renameExercise('${e.name.replace(/'/g,"\\'")}')">Rename</button>
+              <button class="icon-btn" onclick="deleteLibEx('${e.id}')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>`).join('')}
+      </div>
+    `).join('') +
+    (nonLibNames.length ? `
+      <hr class="divider" style="margin:16px 0;">
+      <div style="font-size:11px;font-weight:600;color:var(--orange);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:7px;">Names used in sessions (not in library)</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Rename to match library names so best-weight tracking works across sessions.</div>
+      ${nonLibNames.map(n=>`
         <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);">
-          <div>
-            <span style="font-size:14px;">${e.name}</span>
-            <span style="font-size:11px;color:var(--muted);margin-left:8px;background:var(--surface2);padding:2px 7px;border-radius:10px;">${e.type||'weight'}</span>
-          </div>
-          <button class="icon-btn" onclick="deleteLibEx('${e.id}')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          <span style="font-size:13px;">${n}</span>
+          <button class="btn btn-secondary btn-sm" onclick="renameExercise('${n.replace(/'/g,"\\'")}')">Rename</button>
         </div>`).join('')}
-    </div>
-  `).join('');
+    ` : '');
 }
 
 function openLibModal() { document.getElementById('lib-name').value=''; openModal('lib'); }
@@ -3045,6 +3098,42 @@ function saveLibEx() {
 function deleteLibEx(id) {
   if (!confirm('Remove from library?')) return;
   db.library = db.library.filter(e=>e.id!==id);
+  save(); renderLibrary();
+}
+
+function renameExercise(oldName) {
+  const newName = prompt('Rename "' + oldName + '" to:', oldName);
+  if (!newName || newName.trim() === oldName) return;
+  const n = newName.trim();
+
+  // rename in library
+  const libEx = db.library.find(e => e.name.toLowerCase() === oldName.toLowerCase());
+  if (libEx) libEx.name = n;
+
+  // rename in sessions
+  db.sessions.forEach(s => {
+    function fix(arr) {
+      arr.forEach(e => {
+        if (Array.isArray(e)) { e.forEach(x => { if (x.name.toLowerCase() === oldName.toLowerCase()) x.name = n; }); }
+        else if (e.name && e.name.toLowerCase() === oldName.toLowerCase()) e.name = n;
+      });
+    }
+    fix(s.exercises || []);
+    fix(s.warmup || []);
+  });
+
+  // rename in templates
+  (db.templates || []).forEach(t => {
+    function fixTpl(arr) {
+      arr.forEach(e => {
+        if (e._ss) { (e.ex||[]).forEach(x => { if (x.name.toLowerCase() === oldName.toLowerCase()) x.name = n; }); }
+        else if (e.name && e.name.toLowerCase() === oldName.toLowerCase()) e.name = n;
+      });
+    }
+    fixTpl(t.exercises || []);
+    fixTpl(t.warmup || []);
+  });
+
   save(); renderLibrary();
 }
 
