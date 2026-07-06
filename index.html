@@ -2787,6 +2787,8 @@ function toggleTemplateRotation(id, clientId) {
   if (!t) return;
   t.inRotation = t.inRotation === false ? true : false;
   save(); renderClient(clientId);
+  const tabEl = document.querySelector('.tab[onclick*="tp-templates"]');
+  if (tabEl) switchTab(tabEl, 'tp-templates');
 }
 
 function deleteTemplate(id, clientId) {
