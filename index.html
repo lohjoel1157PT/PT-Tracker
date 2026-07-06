@@ -2043,8 +2043,37 @@ document.addEventListener('dragend', () => {
   _dragEl = null;
 });
 
+let _scrollRaf = null;
+function _dragAutoScroll(clientY) {
+  // find the nearest scrollable ancestor of the dragged element
+  const scroller = (function findScroller(el) {
+    if (!el) return window;
+    if (el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== 'visible') return el;
+    return findScroller(el.parentElement);
+  })(_dragEl);
+
+  const ZONE = 80, SPEED = 12;
+  let scrollTop, clientHeight;
+  if (scroller === window) {
+    scrollTop = window.scrollY; clientHeight = window.innerHeight;
+  } else {
+    const r = scroller.getBoundingClientRect();
+    scrollTop = scroller.scrollTop; clientHeight = r.height;
+    const localY = clientY - r.top;
+    if (localY < ZONE) {
+      scroller.scrollTop = Math.max(0, scrollTop - SPEED * (1 - localY / ZONE));
+    } else if (localY > clientHeight - ZONE) {
+      scroller.scrollTop = scrollTop + SPEED * (1 - (clientHeight - localY) / ZONE);
+    }
+    return;
+  }
+  if (clientY < ZONE) window.scrollBy(0, -SPEED * (1 - clientY / ZONE));
+  else if (clientY > clientHeight - ZONE) window.scrollBy(0, SPEED * (1 - (clientHeight - clientY) / ZONE));
+}
+
 document.addEventListener('dragover', e => {
   if (!_dragEl) return;
+  _dragAutoScroll(e.clientY);
   const target = e.target.closest(DRAG_SEL);
   if (!target || target === _dragEl || target.parentElement !== _dragEl.parentElement) return;
   e.preventDefault();
