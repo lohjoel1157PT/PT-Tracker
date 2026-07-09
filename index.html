@@ -1689,20 +1689,30 @@ function loadTemplate(clientId) {
   window._sessionTemplates[clientId] = templateId;
 
   // helper to build one exercise block from template ex
-  function buildExBlock(ex, isInSuperset, targetContainer) {
+  // Positional lookup: flatten last/secondLast session exercises to match by slot index
+  const flatLastExes = (lastSession?.exercises || []).flat();
+  const flatSecondLastExes = (secondLastSession?.exercises || []).flat();
+  let mainExIdx = 0;
+
+  function buildExBlock(ex, isInSuperset, targetContainer, prevSlot) {
     const id = exIdx++;
+    // Use the exercise name from the previous session at this slot (supports progression renames)
+    const displayName = prevSlot?.name || ex.name;
     const isTime = ex.type === 'time';
-    const prevEx = getPrevSetData(lastSession, ex.name);
-    const secondPrevEx = getPrevSetData(secondLastSession, ex.name);
+
+    // Positional prev data (from last session at same slot)
+    const prevEx = prevSlot || null;
+    // Weight drop: compare last session slot to second-last session (by updated name)
+    const secondPrevEx = getPrevSetData(secondLastSession, displayName);
 
     // build per-set reference rows for last session
-    const prevRows = (ex.sets||[]).map((tplSet, i) => {
+    const prevRows = (prevEx?.sets || ex.sets||[]).map((tplSet, i) => {
       const prevSet = prevEx?.sets?.[i];
       if (!prevSet) return '';
       if (isTime) {
         return `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: ${prevSet.duration||0}s</div>`;
       }
-      return `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${prevSet.weight||0}${unitLabel()} × ${prevSet.reps||0} reps</strong>${tplSet.targetReps?` <span style="color:var(--accent);">(target: ${tplSet.targetReps})</span>`:''}</div>`;
+      return `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${prevSet.weight||0}${unitLabel()} × ${prevSet.reps||0} reps</strong>${ex.sets?.[i]?.targetReps?` <span style="color:var(--accent);">(target: ${ex.sets[i].targetReps})</span>`:''}</div>`;
     }).join('');
 
     // weight drop detection
@@ -1714,8 +1724,8 @@ function loadTemplate(clientId) {
       `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${set.weight||0}${unitLabel()} × ${set.reps||0} reps</strong></div>`
     ).join('') : '';
 
-    // cross-template best weight
-    const bestInfo = !isTime ? getBestWeightForExercise(clientId, ex.name) : null;
+    // cross-template best weight (name-based, benefits from rename standardisation)
+    const bestInfo = !isTime ? getBestWeightForExercise(clientId, displayName) : null;
     const bestIsOther = bestInfo && bestInfo.maxWeight > lastMaxW && bestInfo.session?.id !== lastSession?.id;
     const bestTemplateName = bestIsOther ? ((db.templates||[]).find(x=>x.id===bestInfo.session?.templateId)?.name || '') : '';
 
@@ -1744,7 +1754,7 @@ function loadTemplate(clientId) {
       <div class="ex-block-inner">
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
           <div class="ac-wrap" style="flex:1;">
-            <input type="text" id="en-${id}" value="${ex.name}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId}')">
+            <input type="text" id="en-${id}" value="${displayName}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId}')">
             <div class="ac-list" id="ac-${id}"></div>
           </div>
           <button class="icon-btn" onclick="this.closest('.ex-block').remove()">
@@ -1775,7 +1785,10 @@ function loadTemplate(clientId) {
 
     // IMPORTANT: append to DOM first so addSet can find tbody
     (targetContainer || container).appendChild(div);
-    if (ex.notes) { const n = document.getElementById('ex-notes-'+id); if (n) n.value = ex.notes; }
+
+    // Pre-fill exercise notes: last session's notes take priority, then template notes
+    const notesVal = prevSlot?.exNotes || ex.notes || '';
+    if (notesVal) { const n = document.getElementById('ex-notes-'+id); if (n) n.value = notesVal; }
 
     // add sets with weight pre-filled from last session
     const prevSets = prevEx?.sets || [];
@@ -1797,10 +1810,13 @@ function loadTemplate(clientId) {
   }
 
   // load warm-up exercises from template
+  const flatLastWarmup = (lastSession?.warmup || []).flat();
   const wuContainer = document.getElementById('warmup-container');
   if (wuContainer && t.warmup?.length) {
     wuContainer.innerHTML = '';
-    t.warmup.forEach(ex => {
+    t.warmup.forEach((ex, wuI) => {
+      const prevWuSlot = flatLastWarmup[wuI];
+      const displayWuName = prevWuSlot?.name || ex.name;
       const id = exIdx++;
       const div = document.createElement('div');
       div.className = 'ex-block warmup-block';
@@ -1812,7 +1828,7 @@ function loadTemplate(clientId) {
           <div class="warmup-label">Warm-Up</div>
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
             <div class="ac-wrap" style="flex:1;">
-              <input type="text" id="en-${id}" value="${ex.name}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">
+              <input type="text" id="en-${id}" value="${displayWuName}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">
               <div class="ac-list" id="ac-${id}"></div>
             </div>
             <button class="icon-btn" onclick="this.closest('.ex-block').remove()">
@@ -1833,9 +1849,11 @@ function loadTemplate(clientId) {
         </div>
       `;
       wuContainer.appendChild(div);
-      const prevWuEx = getPrevSetData(lastSession, ex.name);
-      const prevWuSets = prevWuEx?.sets || [];
+      const prevWuSets = prevWuSlot?.sets || [];
       const numWuSets = prevWuSets.length || ex.sets?.length || 3;
+      // Pre-fill warmup exercise notes from last session
+      const wuNotesVal = prevWuSlot?.exNotes || ex.notes || '';
+      if (wuNotesVal) { const n = document.getElementById('ex-notes-'+id); if (n) n.value = wuNotesVal; }
       for (let i=0; i<numWuSets; i++) {
         addSet(id);
         if (prevWuSets[i]) {
@@ -1846,15 +1864,15 @@ function loadTemplate(clientId) {
     });
   }
 
-  // load main exercises from template
+  // load main exercises from template (pass positional prev slot for name + notes carry-over)
   (t.exercises||[]).forEach(ex => {
     if (Array.isArray(ex)) {
       const gid = uid();
       createSupersetWrapper(gid, container);
       const inner = document.getElementById('ss-inner-' + gid);
-      ex.forEach(e => buildExBlock(e, true, inner));
+      ex.forEach(e => buildExBlock(e, true, inner, flatLastExes[mainExIdx++]));
     } else {
-      buildExBlock(ex, false);
+      buildExBlock(ex, false, undefined, flatLastExes[mainExIdx++]);
     }
   });
 
