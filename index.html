@@ -428,6 +428,18 @@
       <div class="page-header">
         <div><h2>Log Session</h2><p class="subtitle">Record a workout</p></div>
       </div>
+      <div id="draft-banner" class="card" style="display:none;max-width:780px;margin-bottom:12px;border-color:var(--accent);background:rgba(10,132,255,0.08);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:600;font-size:14px;">Unsaved draft found</div>
+            <div id="draft-banner-time" style="font-size:12px;color:var(--muted);margin-top:2px;"></div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-secondary btn-sm" onclick="discardDraftPrompt()">Discard</button>
+            <button class="btn btn-primary btn-sm" onclick="resumeDraftPrompt()">Resume Draft</button>
+          </div>
+        </div>
+      </div>
       <div class="card" style="max-width:780px;">
         <!-- Date + unit row -->
         <div class="form-group" style="margin-bottom:10px;">
@@ -482,7 +494,9 @@
         <div id="client-sections"></div>
 
         <hr class="divider">
-        <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">
+          <span id="draft-status" style="font-size:12px;color:var(--muted);"></span>
+          <button class="btn btn-secondary" onclick="saveDraft(true)">Save Draft</button>
           <button class="btn btn-secondary" onclick="resetLog()">Clear</button>
           <button class="btn btn-primary" onclick="saveSession()">Save Session</button>
         </div>
@@ -1579,7 +1593,10 @@ function initLog() {
   if (!document.getElementById('log-date').value)
     document.getElementById('log-date').value = new Date().toISOString().slice(0,10);
   populateClientAddSelect();
-  if (!sessionClients.length) renderClientSections();
+  if (!sessionClients.length) {
+    renderClientSections();
+    checkForDraft();
+  }
   updateBlockSelector();
 }
 
@@ -1733,6 +1750,9 @@ function loadTemplate(clientId) {
     const bestInfo = !isTime ? getBestWeightForExercise(clientId, displayName) : null;
     const bestIsOther = bestInfo && bestInfo.maxWeight > lastMaxW && bestInfo.session?.id !== lastSession?.id;
     const bestTemplateName = bestIsOther ? ((db.templates||[]).find(x=>x.id===bestInfo.session?.templateId)?.name || '') : '';
+    const bestRows = bestIsOther ? (bestInfo.ex.sets||[]).map((set,i)=>
+      `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${set.weight||0}${unitLabel()} × ${set.reps||0} reps</strong></div>`
+    ).join('') : '';
 
     const prevBlock = prevEx ? `
       <div style="background:rgba(10,132,255,0.08);border:1px solid rgba(10,132,255,0.2);border-radius:7px;padding:8px 10px;margin-bottom:8px;">
@@ -1745,7 +1765,7 @@ function loadTemplate(clientId) {
         ${bestIsOther ? `
           <div style="border-top:1px solid rgba(10,132,255,0.15);margin:6px 0 4px;"></div>
           <div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">Best overall${bestTemplateName?' ('+bestTemplateName+')':''} — ${fmtDate(bestInfo.session.date)}</div>
-          <div style="font-size:11px;color:var(--muted);">Peak: <strong style="color:var(--text);">${bestInfo.maxWeight}${unitLabel()}</strong></div>` : ''}
+          ${bestRows}` : ''}
       </div>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">No previous ${t.name} data yet</div>`;
 
     const div = document.createElement('div');
@@ -2012,6 +2032,7 @@ function resetLog() {
   document.getElementById('log-block-week').value = '';
   exIdx = 0;
   populateClientAddSelect();
+  discardDraft();
 }
 
 function logFor(clientId) {
@@ -2027,6 +2048,224 @@ function logFor(clientId) {
       updateBlockSelector();
     }
   }, 60);
+}
+
+// ── DRAFT (autosave in-progress session so it survives an app close mid-session) ──────────────
+const DRAFT_KEY = 'pt_draft_v1';
+
+function collectDraftBlocks(containerId) {
+  const blocks = [];
+  const container = document.getElementById(containerId);
+  if (!container) return blocks;
+
+  function readDraftEx(id) {
+    const name = (document.getElementById('en-'+id)?.value||'').trim();
+    if (!name) return null;
+    const exNotes = (document.getElementById('ex-notes-'+id)?.value||'').trim();
+    const isTime = document.getElementById('time-mode-'+id)?.checked;
+    const sets = [];
+    document.querySelectorAll(`#sets-${id} tr`).forEach(row => {
+      if (isTime) {
+        const d = parseInt(document.getElementById(`d-${id}-${row.rowIndex}`)?.value)||0;
+        const rpe = parseFloat(document.getElementById(`rpe-${id}-${row.rowIndex}`)?.value)||null;
+        sets.push({type:'time', duration:d, rpe});
+      } else {
+        const ins = row.querySelectorAll('input[type="number"]');
+        const w = parseFloat(ins[0]?.value)||0;
+        const r = parseInt(ins[1]?.value)||0;
+        const rpe = parseFloat(ins[2]?.value)||null;
+        sets.push({weight:w, reps:r, rpe});
+      }
+    });
+    return {name, exNotes, sets};
+  }
+
+  [...container.children].forEach(child => {
+    if (child.classList.contains('ss-wrapper')) {
+      const gid = child.dataset.supersetGroup;
+      const inner = document.getElementById('ss-inner-' + gid);
+      if (!inner) return;
+      const group = [];
+      [...inner.querySelectorAll('[data-ex-id]')].forEach(block => {
+        const ex = readDraftEx(block.dataset.exId);
+        if (ex) group.push(ex);
+      });
+      if (group.length) blocks.push(group);
+    } else if (child.dataset.exId !== undefined) {
+      const ex = readDraftEx(child.dataset.exId);
+      if (ex) blocks.push(ex);
+    }
+  });
+  return blocks;
+}
+
+function buildDraftSnapshot() {
+  if (!sessionClients.length) return null;
+  const perClient = {};
+  sessionClients.forEach(sc => {
+    perClient[sc.id] = {
+      exercises: collectDraftBlocks('ex-container-' + sc.id),
+      notes: document.getElementById('log-notes-'+sc.id)?.value || '',
+      deduct: document.getElementById('deduct-pkg-'+sc.id)?.checked ?? null
+    };
+  });
+  return {
+    savedAt: new Date().toISOString(),
+    date: document.getElementById('log-date').value,
+    useLbs: document.getElementById('use-lbs').checked,
+    clients: sessionClients.map(sc => ({id: sc.id, color: sc.color})),
+    blockId: document.getElementById('log-block-id')?.value || '',
+    blockWeek: document.getElementById('log-block-week')?.value || '',
+    templates: {...(window._sessionTemplates||{})},
+    warmup: collectDraftBlocks('warmup-container'),
+    perClient
+  };
+}
+
+function showDraftStatus(msg) {
+  const el = document.getElementById('draft-status');
+  if (!el) return;
+  el.textContent = msg;
+  clearTimeout(showDraftStatus._t);
+  showDraftStatus._t = setTimeout(() => { el.textContent = ''; }, 2500);
+}
+
+function saveDraft(manual) {
+  const snap = buildDraftSnapshot();
+  if (!snap) { if (manual) alert('Add at least one client before saving a draft.'); return; }
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(snap));
+  if (manual) showDraftStatus('Draft saved');
+}
+
+let _draftAutosaveTimer = null;
+function scheduleDraftAutosave() {
+  clearTimeout(_draftAutosaveTimer);
+  _draftAutosaveTimer = setTimeout(() => saveDraft(false), 1000);
+}
+document.getElementById('page-log').addEventListener('input', scheduleDraftAutosave);
+document.getElementById('page-log').addEventListener('change', scheduleDraftAutosave);
+document.getElementById('page-log').addEventListener('click', e => { if (e.target.closest('button')) scheduleDraftAutosave(); });
+
+function discardDraft() {
+  localStorage.removeItem(DRAFT_KEY);
+  const banner = document.getElementById('draft-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+function discardDraftPrompt() {
+  if (!confirm('Discard the saved draft? This cannot be undone.')) return;
+  discardDraft();
+}
+
+function timeAgo(isoString) {
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + ' min ago';
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return hrs + ' hr' + (hrs===1?'':'s') + ' ago';
+  const days = Math.round(hrs / 24);
+  return days + ' day' + (days===1?'':'s') + ' ago';
+}
+
+function checkForDraft() {
+  const banner = document.getElementById('draft-banner');
+  if (!banner) return;
+  const raw = localStorage.getItem(DRAFT_KEY);
+  if (!raw) { banner.style.display = 'none'; return; }
+  let draft;
+  try { draft = JSON.parse(raw); } catch(e) { localStorage.removeItem(DRAFT_KEY); banner.style.display = 'none'; return; }
+  document.getElementById('draft-banner-time').textContent = 'Saved ' + timeAgo(draft.savedAt);
+  banner.style.display = 'block';
+}
+
+function resumeDraftPrompt() {
+  const raw = localStorage.getItem(DRAFT_KEY);
+  if (!raw) { checkForDraft(); return; }
+  let draft;
+  try { draft = JSON.parse(raw); } catch(e) { discardDraft(); return; }
+  restoreDraft(draft);
+  document.getElementById('draft-banner').style.display = 'none';
+}
+
+function restoreDraftEx(ex, id, clientId) {
+  const nameInput = document.getElementById('en-'+id);
+  if (nameInput) nameInput.value = ex.name || '';
+  const notesInput = document.getElementById('ex-notes-'+id);
+  if (notesInput) notesInput.value = ex.exNotes || '';
+  const isTime = ex.sets?.[0]?.type === 'time';
+  const toggle = document.getElementById('type-toggle-'+id);
+  const timeCheck = document.getElementById('time-mode-'+id);
+  if (toggle) toggle.style.display = 'block';
+  if (timeCheck && isTime) { timeCheck.checked = true; toggleTimeMode(id); }
+  const tbody = document.getElementById('sets-'+id);
+  if (tbody) tbody.innerHTML = '';
+  (ex.sets||[]).forEach(() => addSet(id));
+  (ex.sets||[]).forEach((set,i) => {
+    if (isTime) {
+      const d = document.getElementById(`d-${id}-${i+1}`); if (d) d.value = set.duration || '';
+    } else {
+      const w = document.getElementById(`w-${id}-${i+1}`); if (w) w.value = set.weight || '';
+      const r = document.getElementById(`r-${id}-${i+1}`); if (r) r.value = set.reps || '';
+    }
+    const rpe = document.getElementById(`rpe-${id}-${i+1}`); if (rpe) rpe.value = set.rpe ?? '';
+  });
+  // Show previous-session progress for reference without overwriting the restored values above.
+  if (ex.name && clientId) showPrevInfo(id, ex.name, clientId);
+}
+
+function restoreDraftBlocks(blocks, containerId, section, clientId) {
+  (blocks||[]).forEach(entry => {
+    if (Array.isArray(entry)) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const gid = uid();
+      createSupersetWrapper(gid, container);
+      entry.forEach(ex => restoreDraftEx(ex, addExBlockIntoSuperset(gid, clientId), clientId));
+    } else {
+      restoreDraftEx(entry, addExBlock(section, clientId), clientId);
+    }
+  });
+}
+
+function restoreDraft(draft) {
+  document.getElementById('log-date').value = draft.date || new Date().toISOString().slice(0,10);
+  document.getElementById('use-lbs').checked = !!draft.useLbs;
+  toggleUnit();
+
+  sessionClients = (draft.clients||[]).map(c => ({id: c.id, color: c.color}));
+  window._sessionTemplates = {...(draft.templates||{})};
+  populateClientAddSelect();
+  renderClientSections();
+  renderClientPills();
+  updatePkgStatus();
+  updateBlockSelector();
+
+  // renderClientSections() seeds each new client section with one blank exercise block — clear before restoring.
+  document.getElementById('warmup-container').innerHTML = '';
+  sessionClients.forEach(sc => {
+    const c = document.getElementById('ex-container-'+sc.id);
+    if (c) c.innerHTML = '';
+  });
+
+  restoreDraftBlocks(draft.warmup, 'warmup-container', 'warmup');
+  sessionClients.forEach(sc => {
+    const pc = draft.perClient?.[sc.id];
+    if (!pc) return;
+    restoreDraftBlocks(pc.exercises, 'ex-container-'+sc.id, 'main', sc.id);
+    const notesEl = document.getElementById('log-notes-'+sc.id);
+    if (notesEl) notesEl.value = pc.notes || '';
+    if (pc.deduct !== null && pc.deduct !== undefined) {
+      const dc = document.getElementById('deduct-pkg-'+sc.id);
+      if (dc) dc.checked = pc.deduct;
+    }
+  });
+
+  if (draft.blockId) {
+    const bsel = document.getElementById('log-block-id');
+    if (bsel) { bsel.value = draft.blockId; autoFillWeek(); }
+  }
+  if (draft.blockWeek) { const wk = document.getElementById('log-block-week'); if (wk) wk.value = draft.blockWeek; }
 }
 
 function onClientChange() { updatePkgStatus(); }
@@ -2231,6 +2470,7 @@ function addExBlock(section, clientId) {
   container.appendChild(div);
   addSet(id); addSet(id); addSet(id);
   setTimeout(()=>document.getElementById('en-'+id)?.focus(), 30);
+  return id;
 }
 
 function createSupersetWrapper(gid, container) {
@@ -2300,6 +2540,7 @@ function addExBlockIntoSuperset(gid, clientId) {
   inner.appendChild(div);
   addSet(id); addSet(id); addSet(id);
   setTimeout(()=>document.getElementById('en-'+id)?.focus(), 30);
+  return id;
 }
 
 function addSupersetGroupForClient(clientId) {
@@ -2427,35 +2668,50 @@ function pickAC(id, name) {
   onExNameChange(id, clientId);
 }
 
-function showPrev(exId, name, clientId) {
-  const el = document.getElementById('prev-'+exId);
-  if (!el) return;
-  if (!clientId || !name) { el.innerHTML=''; return; }
+function findPrevExData(name, clientId) {
+  if (!clientId || !name) return null;
   const norm = name.toLowerCase();
-  const allSessions = db.sessions.filter(s=>s.clientId===clientId);
-  const past = allSessions.filter(s=>{
+  const past = db.sessions.filter(s=>s.clientId===clientId).filter(s=>{
     const all = [...(s.warmup||[]),...(s.exercises||[]).flat()];
     return all.some(e=>e.name.toLowerCase()===norm);
   }).sort((a,b)=>b.date.localeCompare(a.date));
-  if (!past.length) { el.innerHTML=`<div class="prev-box"><span class="muted">No previous data for "${name}"</span></div>`; return; }
+  if (!past.length) return null;
   const lastS = past[0];
   const allEx = [...(lastS.warmup||[]),...(lastS.exercises||[]).flat()];
   const lastEx = allEx.find(e=>e.name.toLowerCase()===norm);
-  if (!lastEx) { el.innerHTML=''; return; }
+  return lastEx ? {lastS, lastEx} : null;
+}
+
+// Display-only: shows the previous-session reference box without touching current input values.
+// Used when restoring a draft, where the current inputs already hold the user's in-progress data.
+function showPrevInfo(exId, name, clientId) {
+  const el = document.getElementById('prev-'+exId);
+  if (!el) return;
+  if (!clientId || !name) { el.innerHTML=''; return; }
+  const found = findPrevExData(name, clientId);
+  if (!found) { el.innerHTML=`<div class="prev-box"><span class="muted">No previous data for "${name}"</span></div>`; return; }
+  const { lastS, lastEx } = found;
   const isTime = lastEx.sets && lastEx.sets[0] && lastEx.sets[0].type==='time';
   const summary = (lastEx.sets||[]).map(s=>isTime?`${s.duration}s`:`${s.weight||0}${unitLabel()}×${s.reps||0}`).join(' · ');
   el.innerHTML = `<div class="prev-box"><span class="muted">Last (${fmtDate(lastS.date)}): </span><strong>${summary}</strong></div>`;
-  if (!isTime) {
-    const rows = document.querySelectorAll(`#sets-${exId} tr`);
-    rows.forEach((row,i)=>{
-      const set = (lastEx.sets||[])[i];
-      if (!set) return;
-      const w = document.getElementById(`w-${exId}-${i+1}`);
-      const r = document.getElementById(`r-${exId}-${i+1}`);
-      if (w) w.value = set.weight||'';
-      if (r) r.value = set.reps||'';
-    });
-  }
+}
+
+function showPrev(exId, name, clientId) {
+  showPrevInfo(exId, name, clientId);
+  const found = findPrevExData(name, clientId);
+  if (!found) return;
+  const { lastEx } = found;
+  const isTime = lastEx.sets && lastEx.sets[0] && lastEx.sets[0].type==='time';
+  if (isTime) return;
+  const rows = document.querySelectorAll(`#sets-${exId} tr`);
+  rows.forEach((row,i)=>{
+    const set = (lastEx.sets||[])[i];
+    if (!set) return;
+    const w = document.getElementById(`w-${exId}-${i+1}`);
+    const r = document.getElementById(`r-${exId}-${i+1}`);
+    if (w) w.value = set.weight||'';
+    if (r) r.value = set.reps||'';
+  });
 }
 
 function saveSession() {
@@ -2900,15 +3156,15 @@ function getPrevSetData(session, exName) {
 }
 
 function getBestWeightForExercise(clientId, exName) {
-  let bestWeight = -1, bestSession = null;
+  let bestWeight = -1, bestSession = null, bestEx = null;
   db.sessions.filter(s=>s.clientId===clientId).forEach(s=>{
     const allEx = [...(s.warmup||[]), ...(s.exercises||[]).flat()];
     const ex = allEx.find(e=>e.name.toLowerCase()===exName.toLowerCase());
     if (!ex) return;
     const maxW = Math.max(...(ex.sets||[]).filter(set=>!set.type).map(set=>set.weight||0), 0);
-    if (maxW > bestWeight) { bestWeight = maxW; bestSession = s; }
+    if (maxW > bestWeight) { bestWeight = maxW; bestSession = s; bestEx = ex; }
   });
-  return bestSession ? {session: bestSession, maxWeight: bestWeight} : null;
+  return bestSession ? {session: bestSession, maxWeight: bestWeight, ex: bestEx} : null;
 }
 
 // ── TRAINING PLAN ─────────────────────────────────────────────────────────────
