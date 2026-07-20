@@ -1689,9 +1689,14 @@ function loadTemplate(clientId) {
   window._sessionTemplates[clientId] = templateId;
 
   // helper to build one exercise block from template ex
-  // Positional lookup: flatten last/secondLast session exercises to match by slot index
+  // Positional lookup: flatten last/secondLast session exercises to match by slot index.
+  // Only trust position when the last session's shape matches the template exactly —
+  // otherwise (exercise skipped/added last time) fall back to matching by name, since
+  // positional lookup would silently pair exercises with the wrong prior data.
   const flatLastExes = (lastSession?.exercises || []).flat();
   const flatSecondLastExes = (secondLastSession?.exercises || []).flat();
+  const templateMainCount = (t.exercises||[]).reduce((n,e)=>n+(Array.isArray(e)?e.length:1),0);
+  const positionalOk = !!lastSession && flatLastExes.length === templateMainCount;
   let mainExIdx = 0;
 
   function buildExBlock(ex, isInSuperset, targetContainer, prevSlot) {
@@ -1811,11 +1816,12 @@ function loadTemplate(clientId) {
 
   // load warm-up exercises from template
   const flatLastWarmup = (lastSession?.warmup || []).flat();
+  const warmupPositionalOk = !!lastSession && flatLastWarmup.length === (t.warmup||[]).length;
   const wuContainer = document.getElementById('warmup-container');
   if (wuContainer && t.warmup?.length) {
     wuContainer.innerHTML = '';
     t.warmup.forEach((ex, wuI) => {
-      const prevWuSlot = flatLastWarmup[wuI];
+      const prevWuSlot = warmupPositionalOk ? flatLastWarmup[wuI] : getPrevSetData(lastSession, ex.name);
       const displayWuName = prevWuSlot?.name || ex.name;
       const id = exIdx++;
       const div = document.createElement('div');
@@ -1864,15 +1870,15 @@ function loadTemplate(clientId) {
     });
   }
 
-  // load main exercises from template (pass positional prev slot for name + notes carry-over)
+  // load main exercises from template (pass prev slot for name + notes carry-over)
   (t.exercises||[]).forEach(ex => {
     if (Array.isArray(ex)) {
       const gid = uid();
       createSupersetWrapper(gid, container);
       const inner = document.getElementById('ss-inner-' + gid);
-      ex.forEach(e => buildExBlock(e, true, inner, flatLastExes[mainExIdx++]));
+      ex.forEach(e => buildExBlock(e, true, inner, positionalOk ? flatLastExes[mainExIdx++] : getPrevSetData(lastSession, e.name)));
     } else {
-      buildExBlock(ex, false, undefined, flatLastExes[mainExIdx++]);
+      buildExBlock(ex, false, undefined, positionalOk ? flatLastExes[mainExIdx++] : getPrevSetData(lastSession, ex.name));
     }
   });
 
@@ -2076,13 +2082,13 @@ document.addEventListener('dragend', () => {
 });
 
 let _scrollRaf = null;
-function _dragAutoScroll(clientY) {
+function _dragAutoScroll(clientY, dragEl) {
   // find the nearest scrollable ancestor of the dragged element
   const scroller = (function findScroller(el) {
     if (!el) return window;
     if (el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== 'visible') return el;
     return findScroller(el.parentElement);
-  })(_dragEl);
+  })(dragEl || _dragEl);
 
   const ZONE = 80, SPEED = 12;
   let scrollTop, clientHeight;
@@ -2128,6 +2134,51 @@ document.addEventListener('drop', e => {
     target.parentElement.insertBefore(_dragEl, target.nextSibling);
   }
 });
+
+// Touch support for drag-to-reorder — native HTML5 drag-and-drop never fires from touch gestures.
+let _touchDragEl = null;
+document.addEventListener('touchstart', e => {
+  const handle = e.target.closest('.drag-handle');
+  if (!handle) return;
+  const el = handle.closest(DRAG_SEL);
+  if (!el) return;
+  _touchDragEl = el;
+}, {passive:true});
+
+document.addEventListener('touchmove', e => {
+  if (!_touchDragEl) return;
+  e.preventDefault();
+  _touchDragEl.classList.add('dragging');
+  const touch = e.touches[0];
+  _dragAutoScroll(touch.clientY, _touchDragEl);
+  const under = document.elementFromPoint(touch.clientX, touch.clientY);
+  const target = under && under.closest(DRAG_SEL);
+  document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(x => {
+    x.classList.remove('drag-over-top', 'drag-over-bottom');
+  });
+  if (!target || target === _touchDragEl || target.parentElement !== _touchDragEl.parentElement) return;
+  const rect = target.getBoundingClientRect();
+  target.classList.add(touch.clientY < rect.top + rect.height / 2 ? 'drag-over-top' : 'drag-over-bottom');
+}, {passive:false});
+
+function _touchDragFinish() {
+  if (!_touchDragEl) return;
+  const el = _touchDragEl;
+  _touchDragEl = null;
+  el.classList.remove('dragging');
+  const overTop = document.querySelector('.drag-over-top');
+  const overBottom = document.querySelector('.drag-over-bottom');
+  const target = overTop || overBottom;
+  document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(x => {
+    x.classList.remove('drag-over-top', 'drag-over-bottom');
+  });
+  if (target && target !== el && target.parentElement === el.parentElement) {
+    if (overTop) target.parentElement.insertBefore(el, target);
+    else target.parentElement.insertBefore(el, target.nextSibling);
+  }
+}
+document.addEventListener('touchend', _touchDragFinish);
+document.addEventListener('touchcancel', _touchDragFinish);
 
 function addExBlock(section, clientId) {
   const id = exIdx++;
