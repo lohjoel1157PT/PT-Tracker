@@ -43,6 +43,7 @@
     input[type="checkbox"] { width: auto; -webkit-appearance: checkbox; appearance: checkbox; }
     input:focus, textarea:focus, select:focus { outline: none; border-color: rgba(10,132,255,0.6); box-shadow: 0 0 0 3px rgba(10,132,255,0.08); }
     textarea { resize: vertical; min-height: 72px; }
+    .ex-name-input { resize: none; min-height: 0; overflow: hidden; white-space: pre-wrap; word-break: break-word; line-height: 1.3; }
     .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; letter-spacing: -0.01em; }
     .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(10,132,255,0.3); }
     .btn-primary:hover { background: #2094ff; box-shadow: 0 4px 14px rgba(10,132,255,0.4); }
@@ -830,6 +831,17 @@ function fromFirestore(data) {
 let syncTimeout = null;
 let pendingOfflineSync = false;
 
+// Persisted (survives app close/reload) flag for "local has changes not yet confirmed
+// written to Firestore". pendingOfflineSync alone isn't enough: on mobile the app can be
+// killed/backgrounded mid-write before the promise ever settles, silently losing that
+// in-memory flag. Without this, the next load's unconditional DOC_REF.get() would overwrite
+// local data (and localStorage) with the stale server copy — erasing whatever never made it
+// out, which is exactly how a logged session can "disappear the next day".
+const PENDING_SYNC_KEY = 'pt_pending_sync_v1';
+function markPendingSync() { localStorage.setItem(PENDING_SYNC_KEY, '1'); }
+function clearPendingSync() { localStorage.removeItem(PENDING_SYNC_KEY); }
+function hasPendingSync() { return localStorage.getItem(PENDING_SYNC_KEY) === '1'; }
+
 function showSyncStatus(status, msg) {
   let el = document.getElementById('sync-indicator');
   if (!el) return;
@@ -841,10 +853,12 @@ function showSyncStatus(status, msg) {
 
 function save() {
   localStorage.setItem('pt_db_v2', JSON.stringify(db));
+  markPendingSync();
   showSyncStatus('saving', 'Syncing...');
   DOC_REF.set(toFirestore(db))
     .then(() => {
       pendingOfflineSync = false;
+      clearPendingSync();
       showSyncStatus('saved', 'Saved');
       if (syncTimeout) clearTimeout(syncTimeout);
       syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
@@ -858,6 +872,28 @@ function save() {
 }
 
 function loadData() {
+  // If the last save on this device never confirmed reaching Firestore (write failed, or the
+  // app was closed/backgrounded before the promise settled), local storage already holds the
+  // most current data — pushing it wins. Pulling from the server here would silently overwrite
+  // and lose whatever never made it out.
+  if (hasPendingSync()) {
+    showSyncStatus('saving', 'Resuming sync...');
+    DOC_REF.set(toFirestore(db))
+      .then(() => {
+        pendingOfflineSync = false;
+        clearPendingSync();
+        showSyncStatus('saved', 'Synced');
+        if (syncTimeout) clearTimeout(syncTimeout);
+        syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
+      })
+      .catch(() => {
+        pendingOfflineSync = true;
+        showSyncStatus('offline', 'Offline mode');
+        if (syncTimeout) clearTimeout(syncTimeout);
+        syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 3000);
+      });
+    return;
+  }
   showSyncStatus('saving', 'Loading...');
   DOC_REF.get()
     .then(doc => {
@@ -889,11 +925,12 @@ function loadData() {
 }
 
 window.addEventListener('online', () => {
-  if (pendingOfflineSync) {
+  if (pendingOfflineSync || hasPendingSync()) {
     showSyncStatus('saving', 'Back online, syncing...');
     DOC_REF.set(toFirestore(db))
       .then(() => {
         pendingOfflineSync = false;
+        clearPendingSync();
         showSyncStatus('saved', 'Synced');
         if (syncTimeout) clearTimeout(syncTimeout);
         syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
@@ -908,6 +945,30 @@ window.addEventListener('online', () => {
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 function fmtDate(s) { if(!s) return ''; const d = new Date(s+'T12:00:00'); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+
+// Exercise-name fields are <textarea class="ex-name-input"> (not <input>) so long names wrap
+// and stay fully readable instead of being clipped — this keeps them auto-sized to their content.
+function escTextareaContent(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function autoGrowExName(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+document.addEventListener('input', e => { if (e.target.classList?.contains('ex-name-input')) autoGrowExName(e.target); });
+// A textarea allows literal newlines where the old single-line <input> couldn't — keep names single-line.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.classList?.contains('ex-name-input')) { e.preventDefault(); e.target.blur(); }
+});
+document.addEventListener('paste', e => {
+  if (!e.target.classList?.contains('ex-name-input')) return;
+  setTimeout(() => {
+    if (e.target.value.includes('\n')) e.target.value = e.target.value.replace(/\n+/g, ' ');
+    autoGrowExName(e.target);
+  }, 0);
+});
+new MutationObserver(muts => {
+  muts.forEach(m => m.addedNodes.forEach(n => {
+    if (n.nodeType !== 1) return;
+    if (n.classList?.contains('ex-name-input')) autoGrowExName(n);
+    n.querySelectorAll?.('.ex-name-input').forEach(autoGrowExName);
+  }));
+}).observe(document.body, {childList:true, subtree:true});
 function useLbs() { return document.getElementById('use-lbs')?.checked; }
 function unitLabel() { return useLbs() ? 'lbs' : 'kg'; }
 
@@ -1410,7 +1471,7 @@ function _buildEditExBlock(targetContainer, ex, isWarmup, clientId) {
       ${isWarmup ? '<div class="warmup-label">Warm-Up</div>' : ''}
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
         <div class="ac-wrap" style="flex:1;">
-          <input type="text" id="en-${id}" value="${(ex?.name||'').replace(/"/g,'&quot;')}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">
+          <textarea id="en-${id}" rows="1" class="ex-name-input" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">${escTextareaContent(ex?.name)}</textarea>
           <div class="ac-list" id="ac-${id}"></div>
         </div>
         <button class="icon-btn" onclick="this.closest('.ex-block').remove()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
@@ -1477,7 +1538,7 @@ function _editExIntoSuperset(gid, ex, clientId) {
     <div class="ex-block-inner">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
         <div class="ac-wrap" style="flex:1;">
-          <input type="text" id="en-${id}" value="${(ex?.name||'').replace(/"/g,'&quot;')}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">
+          <textarea id="en-${id}" rows="1" class="ex-name-input" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">${escTextareaContent(ex?.name)}</textarea>
           <div class="ac-list" id="ac-${id}"></div>
         </div>
         <button class="icon-btn" onclick="this.closest('.ex-block').remove()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
@@ -1779,7 +1840,7 @@ function loadTemplate(clientId) {
       <div class="ex-block-inner">
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
           <div class="ac-wrap" style="flex:1;">
-            <input type="text" id="en-${id}" value="${displayName}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId}')">
+            <textarea id="en-${id}" rows="1" class="ex-name-input" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId}')">${escTextareaContent(displayName)}</textarea>
             <div class="ac-list" id="ac-${id}"></div>
           </div>
           <button class="icon-btn" onclick="this.closest('.ex-block').remove()">
@@ -1854,7 +1915,7 @@ function loadTemplate(clientId) {
           <div class="warmup-label">Warm-Up</div>
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
             <div class="ac-wrap" style="flex:1;">
-              <input type="text" id="en-${id}" value="${displayWuName}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">
+              <textarea id="en-${id}" rows="1" class="ex-name-input" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off">${escTextareaContent(displayWuName)}</textarea>
               <div class="ac-list" id="ac-${id}"></div>
             </div>
             <button class="icon-btn" onclick="this.closest('.ex-block').remove()">
@@ -2442,7 +2503,7 @@ function addExBlock(section, clientId) {
       ${section==='warmup' ? '<div class="warmup-label">Warm-Up</div>' : ''}
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
         <div class="ac-wrap" style="flex:1;">
-          <input type="text" id="en-${id}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')">
+          <textarea id="en-${id}" rows="1" class="ex-name-input" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')"></textarea>
           <div class="ac-list" id="ac-${id}"></div>
         </div>
         <button class="icon-btn" onclick="this.closest('.ex-block').remove()" title="Remove">
@@ -2512,7 +2573,7 @@ function addExBlockIntoSuperset(gid, clientId) {
     <div class="ex-block-inner">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
         <div class="ac-wrap" style="flex:1;">
-          <input type="text" id="en-${id}" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')">
+          <textarea id="en-${id}" rows="1" class="ex-name-input" placeholder="Exercise name..." oninput="showAC(${id})" onblur="hideAC(${id})" autocomplete="off" onchange="onExNameChange(${id},'${clientId||''}')"></textarea>
           <div class="ac-list" id="ac-${id}"></div>
         </div>
         <button class="icon-btn" onclick="this.closest('.ex-block').remove()" title="Remove">
@@ -2882,7 +2943,7 @@ function addTemplateEx(section, ex) {
     <div style="flex:1;min-width:0;padding:10px;">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
         <div class="ac-wrap" style="flex:1;min-width:120px;">
-          <input type="text" id="tex-${id}" placeholder="Exercise name..." value="${ex?ex.name:''}" oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">
+          <textarea id="tex-${id}" rows="1" class="ex-name-input" placeholder="Exercise name..." oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">${escTextareaContent(ex?ex.name:'')}</textarea>
           <div class="ac-list" id="tac-${id}"></div>
         </div>
         <select id="ttype-${id}" style="width:110px;" onchange="updateTplSetCols(${id})">
@@ -2944,7 +3005,7 @@ function addTemplateExIntoSuperset(gid, ex) {
     <div style="flex:1;min-width:0;padding:10px;">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
         <div class="ac-wrap" style="flex:1;min-width:120px;">
-          <input type="text" id="tex-${id}" placeholder="Exercise name..." value="${ex?ex.name:''}" oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">
+          <textarea id="tex-${id}" rows="1" class="ex-name-input" placeholder="Exercise name..." oninput="showTemplateAC(${id})" onblur="hideTemplateAC(${id})" autocomplete="off">${escTextareaContent(ex?ex.name:'')}</textarea>
           <div class="ac-list" id="tac-${id}"></div>
         </div>
         <select id="ttype-${id}" style="width:110px;" onchange="updateTplSetCols(${id})">
@@ -3876,6 +3937,22 @@ function mobileRefresh() {
   if (!btn || btn.classList.contains('syncing')) return;
   btn.classList.add('syncing');
   showSyncStatus('saving', 'Syncing...');
+  // Never let a manual refresh pull-and-overwrite local data that hasn't been confirmed
+  // synced yet — push it first, same reasoning as loadData().
+  if (hasPendingSync()) {
+    DOC_REF.set(toFirestore(db)).then(function() {
+      pendingOfflineSync = false;
+      clearPendingSync();
+      showSyncStatus('saved', 'Synced');
+      btn.classList.remove('syncing');
+      setTimeout(function() { showSyncStatus('idle',''); }, 1500);
+    }).catch(function() {
+      pendingOfflineSync = true;
+      showSyncStatus('offline', 'Offline');
+      btn.classList.remove('syncing');
+    });
+    return;
+  }
   DOC_REF.get().then(function(doc) {
     if (doc.exists) {
       db = fromFirestore(doc.data());
