@@ -977,6 +977,13 @@ let progressChart = null;
 let weightChart = null;
 
 function nav(page, id) {
+  // Coach share links reuse the full app's client/session pages, so without this guard a
+  // coach could reach "All Clients" (or any other page) and browse every client on the roster.
+  if (window._sharedRole === 'coach' && window._sharedClientId) {
+    const allowed = (page === 'client' && id === window._sharedClientId) ||
+      (page === 'session' && db.sessions.find(s => s.id === id)?.clientId === window._sharedClientId);
+    if (!allowed) { page = 'client'; id = window._sharedClientId; }
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
