@@ -2782,6 +2782,46 @@ function showPrev(exId, name, clientId) {
   });
 }
 
+// If a session built from a template swaps an exercise for a different one (e.g. progressing
+// a client from lying hip abductor to cable hip abductor), offer to update the template itself
+// so future sessions start from the new exercise, seeded with today's actual reps as the target.
+function syncTemplateExerciseChanges(templateId, exercises) {
+  const t = (db.templates||[]).find(x=>x.id===templateId);
+  if (!t) return;
+
+  const tFlat = [];
+  (t.exercises||[]).forEach((entry, gi) => {
+    if (Array.isArray(entry)) entry.forEach((e, pi) => tFlat.push({name: e.name, gi, pi}));
+    else tFlat.push({name: entry.name, gi, pi: -1});
+  });
+  const sFlat = [];
+  (exercises||[]).forEach(entry => {
+    if (Array.isArray(entry)) entry.forEach(e => sFlat.push(e));
+    else sFlat.push(entry);
+  });
+  // Exercise count/order changed (one added or removed) — matching slots to slots would be a
+  // guess, so leave the template alone rather than risk overwriting the wrong exercise.
+  if (tFlat.length !== sFlat.length) return;
+
+  const changes = [];
+  tFlat.forEach((tEx, i) => {
+    const sEx = sFlat[i];
+    if (tEx.name.toLowerCase() !== sEx.name.toLowerCase()) changes.push({ tEx, sEx });
+  });
+  if (!changes.length) return;
+
+  const summary = changes.map(c => `• ${c.tEx.name} → ${c.sEx.name}`).join('\n');
+  if (!confirm(`Update "${t.name}" template to match today's changes?\n\n${summary}`)) return;
+
+  changes.forEach(({tEx, sEx}) => {
+    const isTime = sEx.sets?.[0]?.type === 'time';
+    const newSets = (sEx.sets||[]).map(s => isTime ? {duration: s.duration} : {targetReps: s.reps});
+    const newEx = { name: sEx.name, type: isTime ? 'time' : 'weight', sets: newSets };
+    if (tEx.pi === -1) t.exercises[tEx.gi] = newEx;
+    else t.exercises[tEx.gi][tEx.pi] = newEx;
+  });
+}
+
 function saveSession() {
   const date = document.getElementById('log-date').value;
   if (!sessionClients.length) { alert('Add at least one client.'); return; }
@@ -2849,6 +2889,7 @@ function saveSession() {
     }
     const notes = (document.getElementById('log-notes-'+sc.id)?.value||'').trim();
     const templateId = window._sessionTemplates?.[sc.id] || null;
+    if (templateId) syncTemplateExerciseChanges(templateId, exercises);
     const blockId = document.getElementById('log-block-id')?.value || null;
     const blockWeek = parseInt(document.getElementById('log-block-week')?.value)||null;
     db.sessions.push({ id:uid(), clientId:sc.id, date, notes, warmup, exercises, deductedPackage, templateId, blockId, blockWeek });
