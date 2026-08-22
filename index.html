@@ -739,6 +739,25 @@
   </div>
 </div>
 
+<div class="modal-bg" id="modal-deload">
+  <div class="modal" style="max-width:360px;">
+    <h3>Deload Schedule</h3>
+    <input type="hidden" id="deload-client-id">
+    <div class="form-group">
+      <label>Deload every (weeks)</label>
+      <input id="deload-every-weeks" type="number" min="1" placeholder="4">
+    </div>
+    <div class="form-group">
+      <label>Cycle start date <span style="color:var(--muted);font-weight:400;">(optional — defaults to first session)</span></label>
+      <input id="deload-last-date" type="date">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('deload')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDeloadSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-weight">
   <div class="modal">
     <h3>Log Body Weight</h3>
@@ -1128,6 +1147,32 @@ function renderClient(id) {
       ${pkgRemain<=2&&pkgRemain>=0?`<div style="margin-top:10px;padding:8px 12px;background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);border-radius:8px;font-size:12px;color:var(--danger);">Package running low — consider renewing.</div>`:''}
     </div>` : '';
 
+  const deloadStatus = getDeloadStatus(c);
+  const deloadSection = deloadStatus ? `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h3 style="margin:0;">Deload</h3>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-secondary btn-sm" onclick="markDeloadDone('${c.id}')">Mark Deload Done</button>
+          <button class="btn btn-secondary btn-sm" onclick="openDeloadModal('${c.id}')">Edit</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+        <div><div style="font-size:22px;font-weight:700;color:var(--accent);">${deloadStatus.trainedWeeks}</div><div style="font-size:11px;color:var(--muted);">Training Weeks Completed</div></div>
+        <div><div style="font-size:22px;font-weight:700;color:${deloadStatus.due?'var(--danger)':'var(--green)'};">${deloadStatus.due?'Due now':deloadStatus.weeksRemaining}</div><div style="font-size:11px;color:var(--muted);">${deloadStatus.due?'':'Weeks Remaining'}</div></div>
+      </div>
+      ${deloadStatus.due?`<div style="margin-top:10px;padding:8px 12px;background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);border-radius:8px;font-size:12px;color:var(--danger);">Deload due — consider scheduling a lighter week.</div>`:''}
+    </div>` : `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h3 style="margin:0 0 3px;">Deload</h3>
+          <p style="font-size:12px;color:var(--muted);margin:0;">No deload schedule set.</p>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="openDeloadModal('${c.id}')">+ Set Deload Schedule</button>
+      </div>
+    </div>`;
+
   document.getElementById('client-detail').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px;margin-bottom:22px;">
       <div style="display:flex;align-items:center;gap:14px;">
@@ -1162,7 +1207,7 @@ function renderClient(id) {
         <div class="card"><h3>Goals</h3><p style="font-size:13px;color:var(--muted);line-height:1.6;">${c.goals||'<em>Not set</em>'}</p></div>
         <div class="card"><h3>Medical / Limitations</h3><p style="font-size:13px;color:var(--muted);line-height:1.6;">${c.notes||'<em>None</em>'}</p></div>
       </div>
-      <div class="card">
+      <div class="card" style="margin-bottom:14px;">
         <h3>Stats</h3>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
           <div><div style="font-size:22px;font-weight:700;color:var(--accent);">${cs.length}</div><div style="font-size:11px;color:var(--muted);">Sessions</div></div>
@@ -1170,6 +1215,7 @@ function renderClient(id) {
           <div><div style="font-size:14px;font-weight:700;color:var(--accent);">${cs[0]?fmtDate(cs[0].date):'—'}</div><div style="font-size:11px;color:var(--muted);">Last session</div></div>
         </div>
       </div>
+      ${deloadSection}
     </div>
     <div class="tab-pane" id="tp-sessions">
       ${cs.length===0?`<div class="empty"><p>No sessions.</p><button class="btn btn-primary" onclick="logFor('${c.id}')">Log First Session</button></div>`
@@ -1290,6 +1336,40 @@ function saveTopUp() {
   if (!c) return;
   c.pkgTotal = (parseInt(c.pkgTotal) || 0) + amount;
   save(); closeModal('topup'); renderClient(clientId);
+}
+
+function openDeloadModal(clientId) {
+  const c = db.clients.find(cl => cl.id === clientId);
+  if (!c) return;
+  document.getElementById('deload-client-id').value = clientId;
+  document.getElementById('deload-every-weeks').value = c.deloadEveryWeeks || '';
+  document.getElementById('deload-last-date').value = c.lastDeloadDate || '';
+  openModal('deload');
+}
+
+function saveDeloadSettings() {
+  const clientId = document.getElementById('deload-client-id').value;
+  const every = parseInt(document.getElementById('deload-every-weeks').value);
+  if (!every || every < 1) { alert('Please enter a valid number of weeks.'); return; }
+  const c = db.clients.find(cl => cl.id === clientId);
+  if (!c) return;
+  c.deloadEveryWeeks = every;
+  c.lastDeloadDate = document.getElementById('deload-last-date').value || null;
+  save(); closeModal('deload'); renderClient(clientId);
+}
+
+function markDeloadDone(clientId) {
+  if (!confirm('Mark this client\'s deload as done? This resets their deload countdown starting from their next session.')) return;
+  const c = db.clients.find(cl => cl.id === clientId);
+  if (!c) return;
+  const clientSessions = db.sessions.filter(s => s.clientId === clientId).sort((a,b) => b.date.localeCompare(a.date));
+  const lastDate = clientSessions[0]?.date || new Date().toISOString().slice(0,10);
+  // Start the new cycle the day after the most recent session so that session
+  // isn't double-counted into both the old and new deload cycles.
+  const next = new Date(lastDate + 'T12:00:00');
+  next.setDate(next.getDate() + 1);
+  c.lastDeloadDate = next.toISOString().slice(0,10);
+  save(); renderClient(clientId);
 }
 
 // ── WEIGHT LOGGING ────────────────────────────────────────────────────────────
@@ -1995,6 +2075,40 @@ function getISOWeek(dateStr) {
   startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
   const diff = d - startOfWeek1;
   return Math.floor(diff / (7 * 86400000));
+}
+
+// ── DELOAD TRACKING ──────────────────────────────────────────────────────────
+// True ISO week-year key (robust across year boundaries), used to de-duplicate
+// "did the client train this week" independent of raw calendar-day counting.
+function isoWeekKey(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const target = new Date(d);
+  const dayNr = (d.getDay() + 6) % 7;
+  target.setDate(d.getDate() - dayNr + 3);
+  const firstThursday = new Date(target.getFullYear(), 0, 4);
+  const firstDayNr = (firstThursday.getDay() + 6) % 7;
+  firstThursday.setDate(firstThursday.getDate() - firstDayNr + 3);
+  const weekNum = 1 + Math.round((target - firstThursday) / (7 * 86400000));
+  return `${target.getFullYear()}-W${weekNum}`;
+}
+
+// Returns null if deload tracking isn't enabled for this client, otherwise
+// { trainedWeeks, weeksRemaining, due, cycleStart }. "Trained weeks" only counts
+// calendar weeks that actually have a logged session, so a skipped week doesn't
+// advance the countdown — the deload date shifts later automatically.
+function getDeloadStatus(client) {
+  const every = parseInt(client.deloadEveryWeeks) || 0;
+  if (!every) return null;
+  const clientSessions = db.sessions.filter(s => s.clientId === client.id).sort((a,b) => a.date.localeCompare(b.date));
+  const cycleStart = client.lastDeloadDate || clientSessions[0]?.date || null;
+  if (!cycleStart) return { trainedWeeks: 0, weeksRemaining: every, due: false, cycleStart: null };
+  const weekKeys = new Set();
+  clientSessions.forEach(s => {
+    if (s.date >= cycleStart) weekKeys.add(isoWeekKey(s.date));
+  });
+  const trainedWeeks = weekKeys.size;
+  const weeksRemaining = every - trainedWeeks;
+  return { trainedWeeks, weeksRemaining, due: weeksRemaining <= 0, cycleStart };
 }
 
 // Get the suggested week number for a client + block
