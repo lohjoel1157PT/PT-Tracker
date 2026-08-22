@@ -1108,9 +1108,17 @@ function renderClients() {
 }
 
 // ── CLIENT DETAIL ─────────────────────────────────────────────────────────────
+// Tracks which client the detail pane currently shows, so a re-render triggered by saving/deleting
+// something (e.g. a weight entry) can restore the tab the trainer was on instead of always resetting
+// to Overview. Only restored for the same client — navigating to a different client still starts fresh.
+let _lastRenderedClientId = null;
+
 function renderClient(id) {
   const c = db.clients.find(x=>x.id===id);
   if (!c) return;
+  const activePane = _lastRenderedClientId === id ? document.querySelector('#client-detail .tab-pane.active') : null;
+  const activeTab = activePane ? activePane.id : 'tp-overview';
+  _lastRenderedClientId = id;
   const cs = [...db.sessions.filter(s=>s.clientId===id)].sort((a,b)=>b.date.localeCompare(a.date));
   const initials = c.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
   const pkgTotal = parseInt(c.pkgTotal)||0;
@@ -1196,13 +1204,13 @@ function renderClient(id) {
     </div>
     ${pkgSection}
     <div class="tabs">
-      <div class="tab active" onclick="switchTab(this,'tp-overview')">Overview</div>
-      <div class="tab" onclick="switchTab(this,'tp-sessions')">Sessions (${cs.length})</div>
-      <div class="tab" onclick="switchTab(this,'tp-prs')">PRs</div>
-      <div class="tab" onclick="switchTab(this,'tp-templates')">Templates</div>
-      <div class="tab" onclick="switchTab(this,'tp-weight')">Weight (${wlogs.length})</div>
+      <div class="tab${activeTab==='tp-overview'?' active':''}" onclick="switchTab(this,'tp-overview')">Overview</div>
+      <div class="tab${activeTab==='tp-sessions'?' active':''}" onclick="switchTab(this,'tp-sessions')">Sessions (${cs.length})</div>
+      <div class="tab${activeTab==='tp-prs'?' active':''}" onclick="switchTab(this,'tp-prs')">PRs</div>
+      <div class="tab${activeTab==='tp-templates'?' active':''}" onclick="switchTab(this,'tp-templates')">Templates</div>
+      <div class="tab${activeTab==='tp-weight'?' active':''}" onclick="switchTab(this,'tp-weight')">Weight (${wlogs.length})</div>
     </div>
-    <div class="tab-pane active" id="tp-overview">
+    <div class="tab-pane${activeTab==='tp-overview'?' active':''}" id="tp-overview">
       <div class="grid-2" style="margin-bottom:14px;">
         <div class="card"><h3>Goals</h3><p style="font-size:13px;color:var(--muted);line-height:1.6;">${c.goals||'<em>Not set</em>'}</p></div>
         <div class="card"><h3>Medical / Limitations</h3><p style="font-size:13px;color:var(--muted);line-height:1.6;">${c.notes||'<em>None</em>'}</p></div>
@@ -1217,7 +1225,7 @@ function renderClient(id) {
       </div>
       ${deloadSection}
     </div>
-    <div class="tab-pane" id="tp-sessions">
+    <div class="tab-pane${activeTab==='tp-sessions'?' active':''}" id="tp-sessions">
       ${cs.length===0?`<div class="empty"><p>No sessions.</p><button class="btn btn-primary" onclick="logFor('${c.id}')">Log First Session</button></div>`
         :'<div class="session-list">'+cs.map(s=>{
           const allEx = [...(s.warmup||[]),...(s.exercises||[]).flat()];
@@ -1235,7 +1243,7 @@ function renderClient(id) {
         }).join('')+'</div>'
       }
     </div>
-    <div class="tab-pane" id="tp-prs">
+    <div class="tab-pane${activeTab==='tp-prs'?' active':''}" id="tp-prs">
       ${Object.keys(prs).length===0?'<div class="empty"><p>No PRs yet.</p></div>'
         :'<div class="pr-grid">'+Object.entries(prs).map(([name,pr])=>`
         <div class="pr-card">
@@ -1245,7 +1253,7 @@ function renderClient(id) {
         </div>`).join('')+'</div>'
       }
     </div>
-    <div class="tab-pane" id="tp-weight">
+    <div class="tab-pane${activeTab==='tp-weight'?' active':''}" id="tp-weight">
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
         <button class="btn btn-primary btn-sm" onclick="openWeightModal('${c.id}')">+ Log Weight</button>
       </div>
@@ -1265,7 +1273,7 @@ function renderClient(id) {
           </div>`).join('')}
       </div>`}
     </div>
-    <div class="tab-pane" id="tp-templates">
+    <div class="tab-pane${activeTab==='tp-templates'?' active':''}" id="tp-templates">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <p style="font-size:13px;color:var(--muted);margin:0;">Workout templates for ${c.name}</p>
         <button class="btn btn-primary btn-sm" onclick="openTemplateModal('${c.id}')">+ New Template</button>
@@ -3331,7 +3339,6 @@ function saveTemplate() {
     db.templates.push({ id: uid(), ...data });
   }
   save(); closeModal('template'); renderClient(clientId);
-  setTimeout(()=>{ document.querySelectorAll('.tabs .tab').forEach(t=>{ if(t.textContent.trim()==='Templates') t.click(); }); }, 100);
 }
 
 function duplicateTemplate(id, clientId) {
@@ -3349,8 +3356,6 @@ function toggleTemplateRotation(id, clientId) {
   if (!t) return;
   t.inRotation = t.inRotation === false ? true : false;
   save(); renderClient(clientId);
-  const tabEl = document.querySelector('.tab[onclick*="tp-templates"]');
-  if (tabEl) switchTab(tabEl, 'tp-templates');
 }
 
 function deleteTemplate(id, clientId) {
