@@ -1,0 +1,13 @@
+{
+  "name": "pt-tracker-functions",
+  "description": "Cloud Functions backend for PT Tracker's AI Coach feature",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-functions": "^6.0.1",
+    "@anthropic-ai/sdk": "^0.32.1"
+  },
+  "private": true
+}

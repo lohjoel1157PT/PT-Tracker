@@ -359,6 +359,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
       <span class="nav-label">Exercise Library</span>
     </button>
+    <button class="nav-item" data-page="ai" onclick="nav('ai')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-1.17 2.83A5 5 0 0 1 17 14v1a3 3 0 0 1-3 3h-4a3 3 0 0 1-3-3v-1a5 5 0 0 1 2.17-4.17A4 4 0 0 1 8 7V6a4 4 0 0 1 4-4z"/><line x1="9" y1="21" x2="15" y2="21"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+      <span class="nav-label">AI Coach</span>
+    </button>
   </nav>
 
   <!-- MOBILE BOTTOM NAV -->
@@ -572,6 +576,25 @@
       </div>
       <div class="card" style="max-width:580px;" id="lib-list"></div>
     </div>
+
+    <!-- AI COACH -->
+    <div class="page" id="page-ai">
+      <div class="page-header">
+        <div><h2>AI Coach</h2><p class="subtitle">Ask fitness questions — answers are grounded in web search, with sources</p></div>
+      </div>
+      <div class="card" style="max-width:720px;display:flex;flex-direction:column;height:calc(100vh - 200px);min-height:360px;">
+        <div id="ai-messages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding-right:4px;">
+          <div class="empty" id="ai-empty">
+            <p>Ask about programming, exercise selection, recovery, nutrition basics, or anything else fitness-related. Answers that need current info will be backed by real web sources.</p>
+          </div>
+        </div>
+        <div id="ai-error" style="display:none;color:var(--danger);font-size:12px;margin-top:8px;"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <input id="ai-input" placeholder="Ask a fitness question..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIMessage();}" style="flex:1;">
+          <button class="btn btn-primary" id="ai-send-btn" onclick="sendAIMessage()">Send</button>
+        </div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -776,6 +799,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
 <script>
 // ── FIREBASE ─────────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1019,6 +1043,7 @@ function nav(page, id) {
   if (page === 'library')   renderLibrary();
   if (page === 'client')    renderClient(id);
   if (page === 'session')   renderSession(id);
+  if (page === 'ai')        initAICoach();
 }
 
 // ── DASHBOARD ───────────────────────────────────────────────────────────────
@@ -1890,8 +1915,16 @@ function loadTemplate(clientId) {
       if (isTime) {
         return `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: ${prevSet.duration||0}s</div>`;
       }
-      return `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${prevSet.weight||0}${unitLabel()} × ${prevSet.reps||0} reps</strong>${ex.sets?.[i]?.targetReps?` <span style="color:var(--accent);">(target: ${ex.sets[i].targetReps})</span>`:''}</div>`;
+      const tw = ex.sets?.[i]?.targetWeight, tr = ex.sets?.[i]?.targetReps;
+      const targetLabel = (tw || tr) ? ` <span style="color:var(--accent);">(target: ${tw?tw+unitLabel():''}${tw&&tr?' × ':''}${tr?tr+' reps':''})</span>` : '';
+      return `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${prevSet.weight||0}${unitLabel()} × ${prevSet.reps||0} reps</strong>${targetLabel}</div>`;
     }).join('');
+
+    // Planned sets from the template itself, shown when there's no session history yet to compare against
+    const plannedRows = (!prevEx && !isTime) ? (ex.sets||[]).map((s,i) => {
+      if (!s.targetWeight && !s.targetReps) return '';
+      return `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${s.targetWeight?s.targetWeight+unitLabel():''}${s.targetWeight&&s.targetReps?' × ':''}${s.targetReps?s.targetReps+' reps':''}</strong></div>`;
+    }).join('') : '';
 
     // weight drop detection
     const lastMaxW = prevEx ? Math.max(...(prevEx.sets||[]).filter(s=>!s.type).map(s=>s.weight||0), 0) : 0;
@@ -1922,7 +1955,11 @@ function loadTemplate(clientId) {
           <div style="border-top:1px solid rgba(10,132,255,0.15);margin:6px 0 4px;"></div>
           <div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">Best overall${bestTemplateName?' ('+bestTemplateName+')':''} — ${fmtDate(bestInfo.session.date)}</div>
           ${bestRows}` : ''}
-      </div>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">No previous ${t.name} data yet</div>`;
+      </div>` : (plannedRows ? `
+      <div style="background:rgba(48,209,88,0.08);border:1px solid rgba(48,209,88,0.2);border-radius:7px;padding:8px 10px;margin-bottom:8px;">
+        <div style="font-size:10px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Planned (from template)</div>
+        ${plannedRows}
+      </div>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">No previous ${t.name} data yet</div>`);
 
     const div = document.createElement('div');
     div.className = 'ex-block';
@@ -1971,7 +2008,8 @@ function loadTemplate(clientId) {
     const notesVal = prevSlot?.exNotes || ex.notes || '';
     if (notesVal) { const n = document.getElementById('ex-notes-'+id); if (n) n.value = notesVal; }
 
-    // add sets with weight pre-filled from last session
+    // add sets with weight pre-filled from last session, falling back to the template's
+    // planned/initial weight when this exercise has never been logged for this client before
     const prevSets = prevEx?.sets || [];
     const numSets = prevSets.length || ex.sets?.length || 3;
     for (let i = 0; i < numSets; i++) {
@@ -1980,6 +2018,9 @@ function loadTemplate(clientId) {
       if (!isTime && prevSets[i]) {
         const w = document.getElementById(`w-${id}-${i+1}`);
         if (w) w.value = prevSets[i].weight || '';
+      } else if (!isTime && ex.sets?.[i]?.targetWeight) {
+        const w = document.getElementById(`w-${id}-${i+1}`);
+        if (w) w.value = ex.sets[i].targetWeight;
       }
       if (isTime && prevSets[i]) {
         const d = document.getElementById(`d-${id}-${i+1}`);
@@ -2041,6 +2082,9 @@ function loadTemplate(clientId) {
         if (prevWuSets[i]) {
           const w = document.getElementById(`w-${id}-${i+1}`);
           if (w) w.value = prevWuSets[i].weight || '';
+        } else if (ex.sets?.[i]?.targetWeight) {
+          const w = document.getElementById(`w-${id}-${i+1}`);
+          if (w) w.value = ex.sets[i].targetWeight;
         }
       }
     });
@@ -2937,7 +2981,7 @@ function syncTemplateExerciseChanges(templateId, exercises) {
 
   changes.forEach(({tEx, sEx}) => {
     const isTime = sEx.sets?.[0]?.type === 'time';
-    const newSets = (sEx.sets||[]).map(s => isTime ? {duration: s.duration} : {targetReps: s.reps});
+    const newSets = (sEx.sets||[]).map(s => isTime ? {duration: s.duration} : {targetWeight: s.weight, targetReps: s.reps});
     const newEx = { name: sEx.name, type: isTime ? 'time' : 'weight', sets: newSets };
     if (tEx.pi === -1) t.exercises[tEx.gi] = newEx;
     else t.exercises[tEx.gi][tEx.pi] = newEx;
@@ -3126,7 +3170,7 @@ function addTemplateEx(section, ex) {
         </button>
       </div>
       <input type="text" id="tnotes-${id}" placeholder="Notes (e.g. seated, no back support...)" value="${ex?.notes||''}" style="font-size:12px;padding:5px 9px;margin-bottom:6px;width:100%;box-sizing:border-box;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets &amp; Target Reps</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets, Weight &amp; Target Reps</div>
       <div id="tpl-sets-${id}"></div>
       <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addTplSet(${id})">+ Set</button>
     </div>
@@ -3188,7 +3232,7 @@ function addTemplateExIntoSuperset(gid, ex) {
         </button>
       </div>
       <input type="text" id="tnotes-${id}" placeholder="Notes (e.g. seated, no back support...)" value="${ex?.notes||''}" style="font-size:12px;padding:5px 9px;margin-bottom:6px;width:100%;box-sizing:border-box;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets &amp; Target Reps</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Sets, Weight &amp; Target Reps</div>
       <div id="tpl-sets-${id}"></div>
       <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addTplSet(${id})">+ Set</button>
     </div>
@@ -3212,6 +3256,8 @@ function addTplSet(exId, set) {
       <button class="icon-btn" style="width:24px;height:24px;margin-left:auto;" onclick="this.parentElement.remove();renumberTplSets(${exId})"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`;
   } else {
     div.innerHTML = `<span style="font-size:12px;color:var(--muted);width:32px;flex-shrink:0;">S${n}</span>
+      <input type="number" placeholder="Weight" value="${set?.targetWeight||''}" style="width:80px;" data-field="targetWeight" title="Initial/planned weight">
+      <span style="font-size:11px;color:var(--muted);">${unitLabel()}</span>
       <input type="number" placeholder="Target reps" value="${set?.targetReps||''}" style="flex:1;" data-field="targetReps">
       <span style="font-size:12px;color:var(--muted);">reps</span>
       <button class="icon-btn" style="width:24px;height:24px;" onclick="this.parentElement.remove();renumberTplSets(${exId})"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`;
@@ -3297,7 +3343,10 @@ function collectTemplateExBlocks(containerId) {
     const sets = [];
     document.querySelectorAll(`#tpl-sets-${id} > div`).forEach(row => {
       if (type==='time') sets.push({duration: parseInt(row.querySelector('[data-field="duration"]')?.value)||0});
-      else sets.push({targetReps: parseInt(row.querySelector('[data-field="targetReps"]')?.value)||0});
+      else sets.push({
+        targetWeight: parseFloat(row.querySelector('[data-field="targetWeight"]')?.value)||0,
+        targetReps: parseInt(row.querySelector('[data-field="targetReps"]')?.value)||0
+      });
     });
     return {name, type, notes, sets};
   }
@@ -3634,6 +3683,81 @@ function renderLibrary() {
           <button class="btn btn-secondary btn-sm" onclick="renameExercise('${n.replace(/'/g,"\\'")}')">Rename</button>
         </div>`).join('')}
     ` : '');
+}
+
+// ── AI COACH ──────────────────────────────────────────────────────────────────
+// Conversation is kept in memory only (not synced to Firestore) — cleared on reload.
+let aiConversation = [];
+let aiSending = false;
+
+function initAICoach() {
+  renderAIMessages();
+  setTimeout(()=>document.getElementById('ai-input')?.focus(), 30);
+}
+
+function escapeHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderAIMessages() {
+  const el = document.getElementById('ai-messages');
+  const empty = document.getElementById('ai-empty');
+  if (!aiConversation.length) {
+    if (empty) empty.style.display = '';
+    [...el.children].forEach(c => { if (c.id !== 'ai-empty') c.remove(); });
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  el.innerHTML = aiConversation.map(m => {
+    if (m.role === 'user') {
+      return `<div style="align-self:flex-end;max-width:80%;background:var(--accent);color:#fff;padding:9px 13px;border-radius:14px 14px 3px 14px;font-size:14px;line-height:1.5;">${escapeHtml(m.content)}</div>`;
+    }
+    const sourcesHtml = m.sources && m.sources.length ? `
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:3px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Sources</div>
+        ${m.sources.map(s=>`<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" style="font-size:12px;color:var(--accent);text-decoration:none;">${escapeHtml(s.title)}</a>`).join('')}
+      </div>` : '';
+    return `<div style="align-self:flex-start;max-width:85%;background:var(--surface2);border:1px solid var(--border);padding:10px 14px;border-radius:14px 14px 14px 3px;font-size:14px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(m.content)}${sourcesHtml}</div>`;
+  }).join('') + `<div id="ai-empty" style="display:none;"></div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function sendAIMessage() {
+  if (aiSending) return;
+  const input = document.getElementById('ai-input');
+  const question = input.value.trim();
+  if (!question) return;
+  const errEl = document.getElementById('ai-error');
+  errEl.style.display = 'none';
+
+  aiConversation.push({ role: 'user', content: question });
+  renderAIMessages();
+  input.value = '';
+  aiSending = true;
+  const btn = document.getElementById('ai-send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Thinking...';
+
+  const history = aiConversation
+    .slice(0, -1)
+    .slice(-10)
+    .map(m => ({ role: m.role, content: m.content }));
+
+  firebase.functions().httpsCallable('askAI')({ question, history })
+    .then(result => {
+      aiConversation.push({ role: 'assistant', content: result.data.answer, sources: result.data.sources || [] });
+      renderAIMessages();
+    })
+    .catch(err => {
+      console.error('AI Coach error:', err);
+      errEl.textContent = 'Something went wrong asking the AI Coach. Please try again.';
+      errEl.style.display = 'block';
+    })
+    .finally(() => {
+      aiSending = false;
+      btn.disabled = false;
+      btn.textContent = 'Send';
+    });
 }
 
 function openLibModal() { document.getElementById('lib-name').value=''; openModal('lib'); }
