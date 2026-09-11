@@ -867,6 +867,7 @@ let db = initDB();
 if (!db.plans) db.plans = [];
 if (!db.weightLogs) db.weightLogs = [];
 if (!db.oneRepMaxes) db.oneRepMaxes = [];
+if (!db.tombstones) db.tombstones = {};
 
 // ── FIRESTORE SERIALIZATION (Firestore doesn't support nested arrays) ─────────
 function toFirestore(data) {
@@ -907,6 +908,80 @@ function markPendingSync() { localStorage.setItem(PENDING_SYNC_KEY, '1'); }
 function clearPendingSync() { localStorage.removeItem(PENDING_SYNC_KEY); }
 function hasPendingSync() { return localStorage.getItem(PENDING_SYNC_KEY) === '1'; }
 
+// ── MERGE-SAFE SYNC ───────────────────────────────────────────────────────────
+// save() used to be a blind DOC_REF.set(toFirestore(db)) — it replaced the ENTIRE
+// shared document with whatever this device/tab happened to have in memory. If two
+// devices (e.g. phone + another browser tab) both had the app open, whichever one
+// saved LAST silently wiped out anything the other had added in between, even for
+// unrelated clients. That is how a logged session or weight entry can vanish without
+// any error ever showing.
+//
+// Fix: every save runs inside a Firestore transaction that reads the current server
+// copy and merges it with this device's local copy by taking the union of every
+// record (by id) from both sides — so an addition from any device is never lost,
+// regardless of save order. Deletions are tracked explicitly via db.tombstones (see
+// tombstone() below) rather than inferred by diffing, since inferring "this device
+// deleted it" from a stale/mismatched local snapshot is exactly what caused the
+// original bug. A record is only actually removed once its id is tombstoned.
+const MERGE_COLLECTIONS = ['clients', 'sessions', 'weightLogs', 'templates', 'oneRepMaxes', 'plans', 'library'];
+
+function tombstone(collection, ids) {
+  if (!db.tombstones) db.tombstones = {};
+  if (!db.tombstones[collection]) db.tombstones[collection] = [];
+  (Array.isArray(ids) ? ids : [ids]).forEach(id => {
+    if (id != null && !db.tombstones[collection].includes(id)) db.tombstones[collection].push(id);
+  });
+}
+
+function mergeArray(serverArr, localArr, deletedIds) {
+  serverArr = serverArr || []; localArr = localArr || [];
+  const deleted = new Set(deletedIds || []);
+  const m = new Map();
+  serverArr.forEach(x => { if (x && x.id != null) m.set(x.id, x); });
+  localArr.forEach(x => { if (x && x.id != null) m.set(x.id, x); }); // local wins on same-id edit conflicts
+  const out = [];
+  m.forEach((v, id) => { if (!deleted.has(id)) out.push(v); });
+  return out;
+}
+
+function mergeDb(server, local) {
+  const merged = Object.assign({}, server || {}, local || {});
+  const mergedTombstones = {};
+  MERGE_COLLECTIONS.forEach(key => {
+    const sT = ((server||{}).tombstones || {})[key] || [];
+    const lT = ((local||{}).tombstones || {})[key] || [];
+    mergedTombstones[key] = Array.from(new Set([...sT, ...lT]));
+  });
+  MERGE_COLLECTIONS.forEach(key => {
+    merged[key] = mergeArray((server||{})[key], (local||{})[key], mergedTombstones[key]);
+  });
+  merged.tombstones = mergedTombstones;
+  return merged;
+}
+
+// Reads the live server copy inside a transaction, merges it with local changes, and
+// writes the merged result back — replacing the old "just overwrite" save/resume path
+// everywhere it was used.
+function syncToFirestore() {
+  return firestore.runTransaction(tx => {
+    return tx.get(DOC_REF).then(doc => {
+      const server = doc.exists ? fromFirestore(doc.data()) : null;
+      const merged = mergeDb(server, db);
+      tx.set(DOC_REF, toFirestore(merged));
+      return merged;
+    });
+  }).then(merged => {
+    db = merged;
+    if (!db.plans) db.plans = [];
+    if (!db.weightLogs) db.weightLogs = [];
+    if (!db.templates) db.templates = [];
+    if (!db.oneRepMaxes) db.oneRepMaxes = [];
+    if (!db.tombstones) db.tombstones = {};
+    localStorage.setItem('pt_db_v2', JSON.stringify(db));
+    return db;
+  });
+}
+
 function showSyncStatus(status, msg) {
   let el = document.getElementById('sync-indicator');
   if (!el) return;
@@ -920,7 +995,7 @@ function save() {
   localStorage.setItem('pt_db_v2', JSON.stringify(db));
   markPendingSync();
   showSyncStatus('saving', 'Syncing...');
-  DOC_REF.set(toFirestore(db))
+  syncToFirestore()
     .then(() => {
       pendingOfflineSync = false;
       clearPendingSync();
@@ -937,53 +1012,26 @@ function save() {
 }
 
 function loadData() {
-  // If the last save on this device never confirmed reaching Firestore (write failed, or the
-  // app was closed/backgrounded before the promise settled), local storage already holds the
-  // most current data — pushing it wins. Pulling from the server here would silently overwrite
-  // and lose whatever never made it out.
-  if (hasPendingSync()) {
-    showSyncStatus('saving', 'Resuming sync...');
-    DOC_REF.set(toFirestore(db))
-      .then(() => {
-        pendingOfflineSync = false;
-        clearPendingSync();
-        showSyncStatus('saved', 'Synced');
-        if (syncTimeout) clearTimeout(syncTimeout);
-        syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
-      })
-      .catch(() => {
-        pendingOfflineSync = true;
-        showSyncStatus('offline', 'Offline mode');
-        if (syncTimeout) clearTimeout(syncTimeout);
-        syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 3000);
-      });
-    return;
-  }
+  // Always goes through the merge-safe transaction (syncToFirestore), whether or not
+  // a previous save on this device is still unconfirmed — it reconciles local and
+  // server state either way instead of blindly picking one side and discarding the
+  // other's changes.
   showSyncStatus('saving', 'Loading...');
-  DOC_REF.get()
-    .then(doc => {
-      if (doc.exists) {
-        db = fromFirestore(doc.data());
-        if (!db.plans) db.plans = [];
-        if (!db.weightLogs) db.weightLogs = [];
-        if (!db.templates) db.templates = [];
-        if (!db.oneRepMaxes) db.oneRepMaxes = [];
-        localStorage.setItem('pt_db_v2', JSON.stringify(db));
-        if (window._sharedClientId) {
-          if (window._sharedRole === 'client') {
-            renderClientSelfPage(window._sharedClientId);
-          } else {
-            nav('client', window._sharedClientId);
-          }
-        } else {
-          renderDash();
-        }
+  syncToFirestore()
+    .then(() => {
+      if (window._sharedClientId) {
+        renderClientSelfPage(window._sharedClientId);
+      } else {
+        renderDash();
       }
+      pendingOfflineSync = false;
+      clearPendingSync();
       showSyncStatus('saved', 'Synced');
       if (syncTimeout) clearTimeout(syncTimeout);
       syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 2000);
     })
     .catch(() => {
+      pendingOfflineSync = true;
       showSyncStatus('offline', 'Offline mode');
       if (syncTimeout) clearTimeout(syncTimeout);
       syncTimeout = setTimeout(() => showSyncStatus('idle', ''), 3000);
@@ -993,7 +1041,7 @@ function loadData() {
 window.addEventListener('online', () => {
   if (pendingOfflineSync || hasPendingSync()) {
     showSyncStatus('saving', 'Back online, syncing...');
-    DOC_REF.set(toFirestore(db))
+    syncToFirestore()
       .then(() => {
         pendingOfflineSync = false;
         clearPendingSync();
@@ -1043,13 +1091,6 @@ let progressChart = null;
 let weightChart = null;
 
 function nav(page, id) {
-  // Coach share links reuse the full app's client/session pages, so without this guard a
-  // coach could reach "All Clients" (or any other page) and browse every client on the roster.
-  if (window._sharedRole === 'coach' && window._sharedClientId) {
-    const allowed = (page === 'client' && id === window._sharedClientId) ||
-      (page === 'session' && db.sessions.find(s => s.id === id)?.clientId === window._sharedClientId);
-    if (!allowed) { page = 'client'; id = window._sharedClientId; }
-  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
@@ -1407,6 +1448,9 @@ function switchTab(el, paneId) {
 
 function deleteClient(id) {
   if (!confirm('Delete this client and all their sessions? This cannot be undone.')) return;
+  tombstone('clients', id);
+  tombstone('sessions', db.sessions.filter(s=>s.clientId===id).map(s=>s.id));
+  tombstone('weightLogs', (db.weightLogs||[]).filter(w=>w.clientId===id).map(w=>w.id));
   db.clients = db.clients.filter(c=>c.id!==id);
   db.sessions = db.sessions.filter(s=>s.clientId!==id);
   db.weightLogs = (db.weightLogs||[]).filter(w=>w.clientId!==id);
@@ -1493,6 +1537,7 @@ function saveWeightLog() {
 
 function deleteWeightLog(id, clientId) {
   if (!confirm('Delete this weight entry?')) return;
+  tombstone('weightLogs', id);
   db.weightLogs = db.weightLogs.filter(w=>w.id!==id);
   save(); renderClient(clientId);
 }
@@ -1522,6 +1567,7 @@ function save1RM() {
 
 function delete1RM(id, clientId) {
   if (!confirm('Delete this 1RM test?')) return;
+  tombstone('oneRepMaxes', id);
   db.oneRepMaxes = db.oneRepMaxes.filter(r=>r.id!==id);
   save(); renderClient(clientId);
 }
@@ -1609,6 +1655,7 @@ function deleteSession(id, clientId) {
   if (c && s && s.deductedPackage && c.pkgUsed>0) {
     c.pkgUsed = Math.max(0, parseInt(c.pkgUsed||0) - 1);
   }
+  tombstone('sessions', id);
   db.sessions = db.sessions.filter(s=>s.id!==id);
   save(); nav('client', clientId);
 }
@@ -3505,6 +3552,7 @@ function toggleTemplateRotation(id, clientId) {
 
 function deleteTemplate(id, clientId) {
   if (!confirm('Delete this template?')) return;
+  tombstone('templates', id);
   db.templates = db.templates.filter(t=>t.id!==id);
   save(); renderClient(clientId);
 }
@@ -3629,6 +3677,7 @@ function saveBlock() {
 
 function deleteBlock(id, clientId) {
   if (!confirm('Delete this training block?')) return;
+  tombstone('plans', id);
   db.plans = db.plans.filter(b=>b.id!==id);
   save(); renderPlan();
 }
@@ -3870,6 +3919,7 @@ function saveLibEx() {
 
 function deleteLibEx(id) {
   if (!confirm('Remove from library?')) return;
+  tombstone('library', id);
   db.library = db.library.filter(e=>e.id!==id);
   save(); renderLibrary();
 }
@@ -4048,16 +4098,10 @@ function checkSharedView() {
     document.querySelector('.main').style.marginLeft = '0';
     document.querySelector('.main').style.paddingBottom = '0';
 
-    if (role === 'client') {
-      renderClientSelfView(clientId);
-    } else {
-      // Coach view: add banner, nav will be called after data loads
-      const banner = document.createElement('div');
-      banner.id = 'share-banner';
-      banner.style.cssText = 'background:rgba(10,132,255,0.1);border-bottom:1px solid rgba(10,132,255,0.2);padding:10px 16px;font-size:13px;color:var(--accent);text-align:center;position:sticky;top:0;z-index:200;';
-      banner.innerHTML = 'Coach view — restricted to this client';
-      document.querySelector('.main').prepend(banner);
-    }
+    // Coach and client links render the identical self-serve workout view — coaches
+    // get the same template-picker/logging experience as the client, not full trainer
+    // admin access (no Edit/Delete Client, no package or deload management, no other clients).
+    renderClientSelfView(clientId);
     return true;
   } catch(e) { return false; }
 }
@@ -4309,7 +4353,12 @@ function importData(e) {
       if (!db.plans) db.plans = [];
       if (!db.weightLogs) db.weightLogs = [];
       if (!db.oneRepMaxes) db.oneRepMaxes = [];
+      if (!db.tombstones) db.tombstones = {};
       localStorage.setItem('pt_db_v2', JSON.stringify(db));
+      // Import is an explicit, user-confirmed full replace — push it straight to
+      // Firestore, bypassing the merge (the whole point here is to overwrite).
+      markPendingSync();
+      DOC_REF.set(toFirestore(db)).then(() => clearPendingSync()).catch(() => {});
       nav('dashboard');
       alert('Data imported successfully!');
     } catch(err) { alert('Could not read file. Make sure it is a valid PT Tracker backup.'); }
@@ -4325,42 +4374,24 @@ function mobileRefresh() {
   if (!btn || btn.classList.contains('syncing')) return;
   btn.classList.add('syncing');
   showSyncStatus('saving', 'Syncing...');
-  // Never let a manual refresh pull-and-overwrite local data that hasn't been confirmed
-  // synced yet — push it first, same reasoning as loadData().
-  if (hasPendingSync()) {
-    DOC_REF.set(toFirestore(db)).then(function() {
-      pendingOfflineSync = false;
-      clearPendingSync();
-      showSyncStatus('saved', 'Synced');
-      btn.classList.remove('syncing');
-      setTimeout(function() { showSyncStatus('idle',''); }, 1500);
-    }).catch(function() {
-      pendingOfflineSync = true;
-      showSyncStatus('offline', 'Offline');
-      btn.classList.remove('syncing');
-    });
-    return;
-  }
-  DOC_REF.get().then(function(doc) {
-    if (doc.exists) {
-      db = fromFirestore(doc.data());
-      if (!db.plans) db.plans = [];
-      if (!db.weightLogs) db.weightLogs = [];
-      if (!db.oneRepMaxes) db.oneRepMaxes = [];
-      localStorage.setItem('pt_db_v2', JSON.stringify(db));
-      var active = document.querySelector('.page.active');
-      var page = active ? active.id.replace('page-', '') : 'dashboard';
-      if (page === 'dashboard') renderDash();
-      else if (page === 'clients') renderClients();
-      else if (page === 'log') initLog();
-      else if (page === 'plan') initPlan();
-      else if (page === 'progress') initProgress();
-      else if (page === 'library') renderLibrary();
-    }
+  // Goes through the merge-safe transaction (syncToFirestore) so a manual refresh
+  // reconciles local and server state instead of blindly picking one side.
+  syncToFirestore().then(function() {
+    pendingOfflineSync = false;
+    clearPendingSync();
+    var active = document.querySelector('.page.active');
+    var page = active ? active.id.replace('page-', '') : 'dashboard';
+    if (page === 'dashboard') renderDash();
+    else if (page === 'clients') renderClients();
+    else if (page === 'log') initLog();
+    else if (page === 'plan') initPlan();
+    else if (page === 'progress') initProgress();
+    else if (page === 'library') renderLibrary();
     showSyncStatus('saved', 'Synced');
     btn.classList.remove('syncing');
     setTimeout(function() { showSyncStatus('idle',''); }, 1500);
   }).catch(function() {
+    pendingOfflineSync = true;
     showSyncStatus('offline', 'Offline');
     btn.classList.remove('syncing');
   });
