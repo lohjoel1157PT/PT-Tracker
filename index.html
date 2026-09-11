@@ -797,6 +797,27 @@
   </div>
 </div>
 
+<div class="modal-bg" id="modal-1rm">
+  <div class="modal">
+    <h3>Log 1RM Test</h3>
+    <input type="hidden" id="onerm-client-id">
+    <div class="form-group">
+      <label>Exercise</label>
+      <input id="onerm-exercise" list="onerm-exercise-options" placeholder="e.g. Back Squat" autocomplete="off">
+      <datalist id="onerm-exercise-options"></datalist>
+    </div>
+    <div class="grid-2">
+      <div class="form-group"><label>Date</label><input id="onerm-date" type="date"></div>
+      <div class="form-group"><label>1RM Weight (<span id="onerm-unit">kg</span>)</label><input id="onerm-weight" type="number" step="0.5" placeholder="100"></div>
+    </div>
+    <div class="form-group"><label>Notes</label><input id="onerm-notes" placeholder="e.g. with belt, competition lift"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('1rm')">Cancel</button>
+      <button class="btn btn-primary" onclick="save1RM()">Save</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
@@ -845,6 +866,7 @@ function initDB() {
 let db = initDB();
 if (!db.plans) db.plans = [];
 if (!db.weightLogs) db.weightLogs = [];
+if (!db.oneRepMaxes) db.oneRepMaxes = [];
 
 // ── FIRESTORE SERIALIZATION (Firestore doesn't support nested arrays) ─────────
 function toFirestore(data) {
@@ -945,6 +967,7 @@ function loadData() {
         if (!db.plans) db.plans = [];
         if (!db.weightLogs) db.weightLogs = [];
         if (!db.templates) db.templates = [];
+        if (!db.oneRepMaxes) db.oneRepMaxes = [];
         localStorage.setItem('pt_db_v2', JSON.stringify(db));
         if (window._sharedClientId) {
           if (window._sharedRole === 'client') {
@@ -1163,6 +1186,11 @@ function renderClient(id) {
   // Weight logs
   const wlogs = (db.weightLogs||[]).filter(w=>w.clientId===id).sort((a,b)=>b.date.localeCompare(a.date));
 
+  // 1RM tests, grouped by exercise (each group already newest-first)
+  const oneRMs = (db.oneRepMaxes||[]).filter(r=>r.clientId===id).sort((a,b)=>b.date.localeCompare(a.date));
+  const oneRMByExercise = {};
+  oneRMs.forEach(r => { if (!oneRMByExercise[r.exercise]) oneRMByExercise[r.exercise] = []; oneRMByExercise[r.exercise].push(r); });
+
   const pkgSection = pkgTotal > 0 ? `
     <div class="card" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -1232,6 +1260,7 @@ function renderClient(id) {
       <div class="tab${activeTab==='tp-overview'?' active':''}" onclick="switchTab(this,'tp-overview')">Overview</div>
       <div class="tab${activeTab==='tp-sessions'?' active':''}" onclick="switchTab(this,'tp-sessions')">Sessions (${cs.length})</div>
       <div class="tab${activeTab==='tp-prs'?' active':''}" onclick="switchTab(this,'tp-prs')">PRs</div>
+      <div class="tab${activeTab==='tp-1rm'?' active':''}" onclick="switchTab(this,'tp-1rm')">1RM</div>
       <div class="tab${activeTab==='tp-templates'?' active':''}" onclick="switchTab(this,'tp-templates')">Templates</div>
       <div class="tab${activeTab==='tp-weight'?' active':''}" onclick="switchTab(this,'tp-weight')">Weight (${wlogs.length})</div>
     </div>
@@ -1276,6 +1305,44 @@ function renderClient(id) {
           <div class="pr-val">${pr.weight}${unitLabel()} × ${pr.reps}</div>
           <div class="pr-date">${fmtDate(pr.date)}</div>
         </div>`).join('')+'</div>'
+      }
+    </div>
+    <div class="tab-pane${activeTab==='tp-1rm'?' active':''}" id="tp-1rm">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn btn-primary btn-sm" onclick="open1RMModal('${c.id}')">+ Log 1RM Test</button>
+      </div>
+      ${Object.keys(oneRMByExercise).length===0?'<div class="empty"><p>No 1RM tests logged yet.</p></div>'
+        : Object.entries(oneRMByExercise).map(([exName, tests]) => {
+          const latest = tests[0];
+          const pctRows = [50,55,60,65,70,75,80,85,90,95,100].map(pct => {
+            const w = Math.round((latest.weight * pct/100) / 0.5) * 0.5;
+            return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 4px;text-align:center;">
+              <div style="font-size:10px;color:var(--muted);">${pct}%</div>
+              <div style="font-size:13px;font-weight:700;">${w}${unitLabel()}</div>
+            </div>`;
+          }).join('');
+          const historyRows = tests.map(t => `
+            <div class="weight-entry">
+              <div>
+                <strong>${t.weight}${unitLabel()}</strong>
+                <span style="color:var(--muted);font-size:12px;margin-left:10px;">${fmtDate(t.date)}</span>
+                ${t.notes?`<span style="color:var(--muted);font-size:12px;margin-left:8px;">· ${t.notes}</span>`:''}
+              </div>
+              <button class="icon-btn" onclick="delete1RM('${t.id}','${c.id}')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>`).join('');
+          return `
+          <div class="card" style="margin-bottom:14px;">
+            <h3 style="margin:0 0 4px;">${exName}</h3>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Latest: <strong style="color:var(--text);">${latest.weight}${unitLabel()}</strong> on ${fmtDate(latest.date)}</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin-bottom:12px;">
+              ${pctRows}
+            </div>
+            <div style="padding-top:10px;border-top:1px solid var(--border);">
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Test history</div>
+              ${historyRows}
+            </div>
+          </div>`;
+        }).join('')
       }
     </div>
     <div class="tab-pane${activeTab==='tp-weight'?' active':''}" id="tp-weight">
@@ -1427,6 +1494,35 @@ function saveWeightLog() {
 function deleteWeightLog(id, clientId) {
   if (!confirm('Delete this weight entry?')) return;
   db.weightLogs = db.weightLogs.filter(w=>w.id!==id);
+  save(); renderClient(clientId);
+}
+
+function open1RMModal(clientId) {
+  document.getElementById('onerm-client-id').value = clientId;
+  document.getElementById('onerm-exercise').value = '';
+  document.getElementById('onerm-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('onerm-weight').value = '';
+  document.getElementById('onerm-notes').value = '';
+  document.getElementById('onerm-unit').textContent = unitLabel();
+  const datalist = document.getElementById('onerm-exercise-options');
+  datalist.innerHTML = allExerciseNamesWithType().map(e=>`<option value="${e.name}">`).join('');
+  openModal('1rm');
+}
+
+function save1RM() {
+  const clientId = document.getElementById('onerm-client-id').value;
+  const exercise = document.getElementById('onerm-exercise').value.trim();
+  const date = document.getElementById('onerm-date').value;
+  const weight = parseFloat(document.getElementById('onerm-weight').value);
+  if (!exercise || !date || !weight) { alert('Please enter exercise, date, and weight.'); return; }
+  if (!db.oneRepMaxes) db.oneRepMaxes = [];
+  db.oneRepMaxes.push({ id:uid(), clientId, exercise, date, weight, notes: document.getElementById('onerm-notes').value.trim() });
+  save(); closeModal('1rm'); renderClient(clientId);
+}
+
+function delete1RM(id, clientId) {
+  if (!confirm('Delete this 1RM test?')) return;
+  db.oneRepMaxes = db.oneRepMaxes.filter(r=>r.id!==id);
   save(); renderClient(clientId);
 }
 
@@ -4212,6 +4308,7 @@ function importData(e) {
       db = imported;
       if (!db.plans) db.plans = [];
       if (!db.weightLogs) db.weightLogs = [];
+      if (!db.oneRepMaxes) db.oneRepMaxes = [];
       localStorage.setItem('pt_db_v2', JSON.stringify(db));
       nav('dashboard');
       alert('Data imported successfully!');
@@ -4249,6 +4346,7 @@ function mobileRefresh() {
       db = fromFirestore(doc.data());
       if (!db.plans) db.plans = [];
       if (!db.weightLogs) db.weightLogs = [];
+      if (!db.oneRepMaxes) db.oneRepMaxes = [];
       localStorage.setItem('pt_db_v2', JSON.stringify(db));
       var active = document.querySelector('.page.active');
       var page = active ? active.id.replace('page-', '') : 'dashboard';
