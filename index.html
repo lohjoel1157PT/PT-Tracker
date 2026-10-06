@@ -390,6 +390,59 @@
       font-size: 12px; color: var(--muted);
       background: rgba(45,212,191,0.06); border-radius: 10px; padding: 6px 10px;
     }
+
+    /* Set stepper (per-set logging UX) */
+    .set-stepper { margin-bottom: 10px; }
+    .stepper-circles { display:flex; align-items:flex-start; gap:10px; overflow-x:auto; padding:4px 2px 8px; -webkit-overflow-scrolling:touch; }
+    .stepper-circle-item { display:flex; flex-direction:column; align-items:center; gap:4px; flex-shrink:0; min-width:40px; cursor:pointer; background:none; border:none; font-family:inherit; }
+    .stepper-circle { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; transition:all .15s; }
+    .stepper-circle.done { background:var(--accent); color:#04332e; }
+    .stepper-circle.active { background:transparent; border:2px solid var(--accent); color:var(--accent); }
+    .stepper-circle.pending { background:var(--surface2); border:1px solid var(--border); color:var(--muted); }
+    .stepper-circle.add { background:transparent; border:2px dashed var(--accent-dim-strong); color:var(--accent); }
+    .stepper-circle-label { font-size:10px; color:var(--muted); white-space:nowrap; }
+    .stepper-circle-item.active .stepper-circle-label { color:var(--accent); }
+
+    .stepper-nav { display:flex; align-items:center; justify-content:space-between; margin:6px 0 10px; gap:8px; }
+    .stepper-nav-left { display:flex; align-items:center; gap:8px; }
+    .stepper-nav-btn { background:var(--surface2); border:1px solid var(--border); color:var(--text); width:30px; height:30px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .stepper-nav-btn:disabled { opacity:.35; cursor:default; }
+    .stepper-nav-title { font-size:14px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.04em; }
+    .stepper-nav-target { font-size:12px; color:var(--muted); }
+
+    .stepper-cards { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+    .stepper-card { background:var(--surface2); border:1px solid var(--border); border-radius:14px; padding:14px 10px 10px; text-align:center; }
+    .stepper-card-label { font-size:10px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+    .stepper-card-value { font-size:34px; font-weight:700; letter-spacing:-0.02em; width:100%; border:none; background:none; text-align:center; color:var(--text); margin-bottom:10px; font-family:inherit; }
+    .stepper-card-value:focus { outline:none; }
+    .stepper-pill { display:flex; border-radius:20px; overflow:hidden; border:1px solid var(--border); }
+    .stepper-pill button { flex:1; background:var(--surface); border:none; color:var(--text); font-size:18px; font-weight:700; padding:8px 0; cursor:pointer; }
+    .stepper-pill button:first-child { border-right:1px solid var(--border); }
+    .stepper-pill button:last-child { color:var(--accent); }
+
+    .stepper-rpe-toggle { display:flex; align-items:center; justify-content:space-between; padding:8px 2px; font-size:13px; color:var(--muted); cursor:pointer; }
+    .stepper-rpe-toggle svg { transition:transform .15s; }
+    .stepper-rpe-toggle.open svg { transform:rotate(180deg); }
+    .stepper-rpe-body { display:none; padding:6px 2px 10px; }
+    .stepper-rpe-body.open { display:block; }
+    .stepper-rpe-body input { width:100%; box-sizing:border-box; }
+
+    .stepper-prev-line { text-align:center; font-size:12px; color:var(--muted); margin:2px 0 10px; }
+
+    .stepper-log-btn { width:100%; background:var(--accent); color:#04332e; border:none; border-radius:14px; padding:15px; font-size:15px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; }
+    .stepper-rest-bar { width:100%; display:flex; align-items:center; background:var(--accent-dim); border:1px solid var(--accent-dim-strong); border-radius:14px; padding:10px 14px; gap:10px; box-sizing:border-box; }
+    .stepper-rest-label { font-size:14px; font-weight:700; color:var(--accent); display:flex; align-items:center; gap:6px; flex:1; font-variant-numeric:tabular-nums; }
+    .stepper-rest-adj { background:var(--surface); border:1px solid var(--border); color:var(--text); font-size:12px; font-weight:600; padding:5px 9px; border-radius:20px; cursor:pointer; flex-shrink:0; }
+    .stepper-skip-btn { background:none; border:none; color:var(--accent); cursor:pointer; display:flex; align-items:center; flex-shrink:0; }
+    .stepper-done-msg { text-align:center; font-size:13px; color:var(--muted); padding:10px; }
+
+    .stepper-hidden { display:none; }
+
+    @media (max-width: 700px) {
+      .stepper-card-value { font-size:28px; }
+      .stepper-circles { gap:8px; }
+      .stepper-circle { width:30px; height:30px; }
+    }
   </style>
 </head>
 <body>
@@ -1812,7 +1865,7 @@ function _buildEditExBlock(targetContainer, ex, isWarmup, clientId) {
           <input type="checkbox" id="time-mode-${id}" ${isTime?'checked':''} onchange="toggleTimeMode(${id})"> Time-based
         </label>
       </div>
-      <div class="sets-table-wrap">
+      <div class="sets-table-wrap stepper-hidden">
         <table class="sets-table" id="sets-table-${id}">
           <thead><tr>${isTime
             ? '<th>Set</th><th>Duration (sec)</th><th>RPE</th><th></th>'
@@ -1820,8 +1873,9 @@ function _buildEditExBlock(targetContainer, ex, isWarmup, clientId) {
           }</tr></thead>
           <tbody id="sets-${id}"></tbody>
         </table>
+        <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
       </div>
-      <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
+      <div class="set-stepper" id="stepper-${id}"></div>
     </div>
   `;
   // Append to DOM FIRST so addSet can find tbody via getElementById
@@ -1842,6 +1896,7 @@ function _buildEditExBlock(targetContainer, ex, isWarmup, clientId) {
       const rpe = document.getElementById(`rpe-${id}-${n}`); if (rpe && set.rpe) rpe.value = set.rpe;
     });
   }
+  renderSetStepper(id, { ex: { sets: ex?.sets, restSeconds: ex?.restSeconds }, prevEx: null, isTime, isSelf: false });
 }
 
 function addEditExBlock(containerId, clientId, ex, isWarmup) {
@@ -1879,7 +1934,7 @@ function _editExIntoSuperset(gid, ex, clientId) {
           <input type="checkbox" id="time-mode-${id}" ${isTime?'checked':''} onchange="toggleTimeMode(${id})"> Time-based
         </label>
       </div>
-      <div class="sets-table-wrap">
+      <div class="sets-table-wrap stepper-hidden">
         <table class="sets-table" id="sets-table-${id}">
           <thead><tr>${isTime
             ? '<th>Set</th><th>Duration (sec)</th><th>RPE</th><th></th>'
@@ -1887,8 +1942,9 @@ function _editExIntoSuperset(gid, ex, clientId) {
           }</tr></thead>
           <tbody id="sets-${id}"></tbody>
         </table>
+        <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
       </div>
-      <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
+      <div class="set-stepper" id="stepper-${id}"></div>
     </div>
   `;
   inner.appendChild(div);
@@ -1907,6 +1963,7 @@ function _editExIntoSuperset(gid, ex, clientId) {
       const rpe = document.getElementById(`rpe-${id}-${n}`); if (rpe && set.rpe) rpe.value = set.rpe;
     });
   }
+  renderSetStepper(id, { ex: { sets: ex?.sets, restSeconds: ex?.restSeconds }, prevEx: null, isTime, isSelf: false });
 }
 
 function addEditSuperset(clientId) {
@@ -2208,7 +2265,7 @@ function loadTemplate(clientId) {
             <input type="checkbox" id="time-mode-${id}" ${isTime?'checked':''} onchange="toggleTimeMode(${id})"> Time-based
           </label>
         </div>
-        <div class="sets-table-wrap">
+        <div class="sets-table-wrap stepper-hidden">
           <table class="sets-table" id="sets-table-${id}">
             <thead><tr>${isTime
               ? '<th>Set</th><th>Duration (sec)</th><th>RPE</th><th></th>'
@@ -2216,8 +2273,9 @@ function loadTemplate(clientId) {
             }</tr></thead>
             <tbody id="sets-${id}"></tbody>
           </table>
+          <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
         </div>
-        <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
+        <div class="set-stepper" id="stepper-${id}"></div>
       </div>
     `;
 
@@ -2242,11 +2300,12 @@ function loadTemplate(clientId) {
         const w = document.getElementById(`w-${id}-${i+1}`);
         if (w) w.value = ex.sets[i].targetWeight;
       }
-      if (isTime && prevSets[i]) {
-        const d = document.getElementById(`d-${id}-${i+1}`);
-        if (d) d.value = prevSets[i].duration || '';
-      }
+      // Note: duration is intentionally NOT pre-filled for time-based exercises (unlike weight
+      // above) so the set stepper's "done" heuristic isn't tricked into showing it as already
+      // logged. Last time's duration is still surfaced via the stepper's "Previous" line.
     }
+
+    renderSetStepper(id, { ex, prevEx, isTime, isSelf: false });
 
     return div;
   }
@@ -2282,13 +2341,14 @@ function loadTemplate(clientId) {
             <input type="text" id="ex-notes-${id}" placeholder="Exercise notes..." style="font-size:12px;padding:6px 10px;">
           </div>
           <div id="prev-${id}"></div>
-          <div class="sets-table-wrap">
+          <div class="sets-table-wrap stepper-hidden">
             <table class="sets-table" id="sets-table-${id}">
               <thead><tr><th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
               <tbody id="sets-${id}"></tbody>
             </table>
+            <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
           </div>
-          <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
+          <div class="set-stepper" id="stepper-${id}"></div>
         </div>
       `;
       wuContainer.appendChild(div);
@@ -2307,6 +2367,7 @@ function loadTemplate(clientId) {
           if (w) w.value = ex.sets[i].targetWeight;
         }
       }
+      renderSetStepper(id, { ex, prevEx: prevWuSlot, isTime: false, isSelf: false });
     });
   }
 
@@ -2485,6 +2546,7 @@ function resetLog() {
   document.getElementById('log-block-id').value = '';
   document.getElementById('log-block-week').value = '';
   exIdx = 0;
+  resetStepperState();
   populateClientAddSelect();
   discardDraft();
 }
@@ -2912,17 +2974,19 @@ function addExBlock(section, clientId) {
           <input type="checkbox" id="time-mode-${id}" onchange="toggleTimeMode(${id})"> Time-based
         </label>
       </div>
-      <div class="sets-table-wrap">
+      <div class="sets-table-wrap stepper-hidden">
       <table class="sets-table" id="sets-table-${id}">
         <thead><tr><th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
         <tbody id="sets-${id}"></tbody>
       </table>
-      </div>
       <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
+      </div>
+      <div class="set-stepper" id="stepper-${id}"></div>
     </div>
   `;
   container.appendChild(div);
   addSet(id); addSet(id); addSet(id);
+  renderSetStepper(id, { ex: { sets: [], restSeconds: null }, prevEx: null, isTime: false, isSelf: false });
   setTimeout(()=>document.getElementById('en-'+id)?.focus(), 30);
   return id;
 }
@@ -2982,17 +3046,19 @@ function addExBlockIntoSuperset(gid, clientId) {
           <input type="checkbox" id="time-mode-${id}" onchange="toggleTimeMode(${id})"> Time-based
         </label>
       </div>
-      <div class="sets-table-wrap">
+      <div class="sets-table-wrap stepper-hidden">
       <table class="sets-table" id="sets-table-${id}">
         <thead><tr><th>Set</th><th class="wt-header">Weight (${unitLabel()})</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
         <tbody id="sets-${id}"></tbody>
       </table>
-      </div>
       <button class="btn btn-secondary btn-sm" style="margin-top:7px;" onclick="addSet(${id})">+ Set</button>
+      </div>
+      <div class="set-stepper" id="stepper-${id}"></div>
     </div>
   `;
   inner.appendChild(div);
   addSet(id); addSet(id); addSet(id);
+  renderSetStepper(id, { ex: { sets: [], restSeconds: null }, prevEx: null, isTime: false, isSelf: false });
   setTimeout(()=>document.getElementById('en-'+id)?.focus(), 30);
   return id;
 }
@@ -3051,6 +3117,12 @@ function toggleTimeMode(id) {
   const count = tbody.children.length;
   tbody.innerHTML = '';
   for (let i=0;i<count;i++) addSet(id);
+  const st = stepperState.get(id);
+  if (st) {
+    st.ctx.isTime = isTime;
+    st.currentSetIndex = 0;
+    renderSetStepper(id, st.ctx);
+  }
 }
 
 function addSet(exId) {
@@ -3081,6 +3153,336 @@ function addSet(exId) {
 function removeSet(btn, exId) {
   btn.closest('tr').remove();
   document.querySelectorAll(`#sets-${exId} tr`).forEach((r,i)=>r.cells[0].textContent=i+1);
+}
+
+// ── SET STEPPER (per-set logging UX) ────────────────────────────────────────
+// Writes into the existing w-/r-/d-/rpe- (trainer) or data-self-id (self-log) backing
+// inputs by id/selector, so readEx/collectBlocks/collectSelfEx and the draft-autosave
+// continue working completely unchanged. Stepper state is in-memory only, never persisted.
+const stepperState = new Map();
+const STEPPER_FIELD_PREFIX = { weight: 'w', reps: 'r', duration: 'd', rpe: 'rpe' };
+
+// Called whenever a page that owns exercise-block ids resets its id counter (resetLog,
+// startClientSelfLog) so stale stepper state/timers from a previous page view never leak
+// into newly-built blocks that happen to reuse the same numeric id.
+function resetStepperState() {
+  stepperState.forEach(st => { if (st.restIntervalId) clearInterval(st.restIntervalId); });
+  stepperState.clear();
+}
+
+function getStepperRows(exId, ctx) {
+  if (ctx.isSelf) {
+    const wrap = document.getElementById('self-sets-' + ctx.selfId);
+    return wrap ? [...wrap.children] : [];
+  }
+  const tbody = document.getElementById('sets-' + exId);
+  return tbody ? [...tbody.children] : [];
+}
+
+function getBackingInput(exId, i, field, ctx) {
+  if (ctx.isSelf) {
+    return document.querySelector(`[data-self-id="${ctx.selfId}"][data-set="${i}"][data-field="${field}"]`);
+  }
+  return document.getElementById(`${STEPPER_FIELD_PREFIX[field]}-${exId}-${i + 1}`);
+}
+
+function isSetDone(exId, i, ctx) {
+  if (ctx.isTime) return !!getBackingInput(exId, i, 'duration', ctx)?.value;
+  const w = getBackingInput(exId, i, 'weight', ctx)?.value;
+  const r = getBackingInput(exId, i, 'reps', ctx)?.value;
+  return !!w && !!r;
+}
+
+function stepperSetSummary(exId, i, ctx) {
+  if (ctx.isTime) {
+    const d = getBackingInput(exId, i, 'duration', ctx)?.value;
+    return d ? `${d}s` : '';
+  }
+  const w = getBackingInput(exId, i, 'weight', ctx)?.value;
+  const r = getBackingInput(exId, i, 'reps', ctx)?.value;
+  return (w && r) ? `${w}×${r}` : '';
+}
+
+function stepperPreviousLine(exId, i, ctx) {
+  const p = (ctx.prevEx?.sets || [])[i];
+  if (!p) return '';
+  if (ctx.isTime) return `Previous · ${p.duration || 0}s`;
+  const unit = typeof unitLabel === 'function' ? unitLabel() : 'kg';
+  return `Previous · ${p.weight || 0}${unit} × ${p.reps || 0} reps`;
+}
+
+function fmtRestTime(sec) {
+  sec = Math.max(0, sec);
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function renderSetStepper(exId, ctx) {
+  const rows = getStepperRows(exId, ctx);
+  const host = document.getElementById('stepper-' + exId);
+  if (!host) return;
+  if (!rows.length) { host.innerHTML = ''; return; }
+  if (!stepperState.has(exId)) {
+    const done = rows.map((_, i) => isSetDone(exId, i, ctx));
+    const firstPending = done.findIndex(d => !d);
+    stepperState.set(exId, {
+      currentSetIndex: firstPending === -1 ? rows.length - 1 : firstPending,
+      restRemaining: 0, restTotal: 0, restIntervalId: null, rpeOpen: false, ctx
+    });
+  } else {
+    stepperState.get(exId).ctx = ctx;
+  }
+  const st = stepperState.get(exId);
+  if (st.currentSetIndex > rows.length - 1) st.currentSetIndex = rows.length - 1;
+  host.innerHTML = buildStepperHtml(exId, st, rows);
+}
+
+function buildStepperHtml(exId, st, rows) {
+  const ctx = st.ctx;
+  const n = st.currentSetIndex;
+  const unit = ctx.isTime ? '' : (typeof unitLabel === 'function' ? unitLabel() : 'kg');
+
+  const circles = rows.map((_, i) => {
+    const done = isSetDone(exId, i, ctx);
+    const active = i === n;
+    const cls = done ? 'done' : (active ? 'active' : 'pending');
+    const targetReps = ctx.ex?.sets?.[i]?.targetReps;
+    const label = done ? stepperSetSummary(exId, i, ctx) : (targetReps ? targetReps + ' reps' : '');
+    const inner = done
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'
+      : (i + 1);
+    return `<button type="button" class="stepper-circle-item ${active ? 'active' : ''}" onclick="jumpToStepperSet(${exId},${i})">
+      <span class="stepper-circle ${cls}">${inner}</span>
+      <span class="stepper-circle-label">${label}</span>
+    </button>`;
+  }).join('') + `<button type="button" class="stepper-circle-item" onclick="addSetFromStepper(${exId})">
+      <span class="stepper-circle add">+</span>
+      <span class="stepper-circle-label">Add</span>
+    </button>`;
+
+  const targetReps = ctx.ex?.sets?.[n]?.targetReps;
+  const target = (!ctx.isTime && targetReps) ? `Target ${targetReps} reps` : '';
+  const prevLine = stepperPreviousLine(exId, n, ctx);
+  const canRemove = rows.length > 1;
+
+  const bigVal = ctx.isTime
+    ? (getBackingInput(exId, n, 'duration', ctx)?.value || '')
+    : (getBackingInput(exId, n, 'weight', ctx)?.value || '');
+  const repsVal = ctx.isTime ? '' : (getBackingInput(exId, n, 'reps', ctx)?.value || '');
+  const rpeVal = getBackingInput(exId, n, 'rpe', ctx)?.value || '';
+
+  const cards = ctx.isTime ? `
+    <div class="stepper-cards" style="grid-template-columns:1fr;">
+      <div class="stepper-card">
+        <div class="stepper-card-label">Duration (sec)</div>
+        <input type="number" class="stepper-card-value" id="stepper-big-${exId}" value="${bigVal}" inputmode="decimal" oninput="updateStepperLogLabel(${exId})">
+        <div class="stepper-pill">
+          <button type="button" onclick="stepperNudge(${exId},'big',-5)">−</button>
+          <button type="button" onclick="stepperNudge(${exId},'big',5)">+</button>
+        </div>
+      </div>
+    </div>` : `
+    <div class="stepper-cards">
+      <div class="stepper-card">
+        <div class="stepper-card-label">Weight</div>
+        <input type="number" class="stepper-card-value" id="stepper-big-${exId}" value="${bigVal}" inputmode="decimal" oninput="updateStepperLogLabel(${exId})">
+        <div class="stepper-pill">
+          <button type="button" onclick="stepperNudge(${exId},'big',-2.5)">−</button>
+          <button type="button" onclick="stepperNudge(${exId},'big',2.5)">+</button>
+        </div>
+      </div>
+      <div class="stepper-card">
+        <div class="stepper-card-label">Reps</div>
+        <input type="number" class="stepper-card-value" id="stepper-reps-${exId}" value="${repsVal}" inputmode="numeric" oninput="updateStepperLogLabel(${exId})">
+        <div class="stepper-pill">
+          <button type="button" onclick="stepperNudge(${exId},'reps',-1)">−</button>
+          <button type="button" onclick="stepperNudge(${exId},'reps',1)">+</button>
+        </div>
+      </div>
+    </div>`;
+
+  const alreadyDone = isSetDone(exId, n, ctx);
+  const actionArea = (st.restIntervalId || st.restRemaining > 0) ? `
+    <div class="stepper-rest-bar">
+      <span class="stepper-rest-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> REST ${fmtRestTime(st.restRemaining)}</span>
+      <button type="button" class="stepper-rest-adj" onclick="adjustRest(${exId},-15)">−15</button>
+      <button type="button" class="stepper-rest-adj" onclick="adjustRest(${exId},15)">+15</button>
+      <button type="button" class="stepper-skip-btn" onclick="skipRest(${exId})" title="Skip rest"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5 4l10 8-10 8V4zM17 4h2v16h-2z"/></svg></button>
+    </div>` : `
+    <button type="button" class="stepper-log-btn" onclick="logCurrentSet(${exId})">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+      ${alreadyDone ? 'Update' : 'Log'} ${ctx.isTime ? (bigVal || 0) + 's' : (bigVal || 0) + unit + ' × ' + (repsVal || 0)}
+    </button>`;
+
+  return `
+    <div class="stepper-circles">${circles}</div>
+    <div class="stepper-nav">
+      <div class="stepper-nav-left">
+        <button type="button" class="stepper-nav-btn" onclick="navigateSet(${exId},-1)" ${n === 0 ? 'disabled' : ''}>‹</button>
+        <span class="stepper-nav-title">SET ${n + 1}</span>
+        <button type="button" class="stepper-nav-btn" onclick="navigateSet(${exId},1)" ${n === rows.length - 1 ? 'disabled' : ''}>›</button>
+        ${canRemove ? `<button type="button" class="stepper-nav-btn" title="Remove this set" onclick="removeStepperSet(${exId})" style="width:24px;height:24px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>` : ''}
+      </div>
+      <span class="stepper-nav-target">${target}</span>
+    </div>
+    ${cards}
+    <div class="stepper-rpe-toggle ${st.rpeOpen ? 'open' : ''}" onclick="toggleStepperRpe(${exId})">
+      <span>How hard?${rpeVal ? (' · RPE ' + rpeVal) : ''}</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="stepper-rpe-body ${st.rpeOpen ? 'open' : ''}" id="stepper-rpe-body-${exId}">
+      <input type="number" min="1" max="10" step="0.5" placeholder="RPE 1-10" id="stepper-rpe-${exId}" value="${rpeVal}">
+    </div>
+    ${prevLine ? `<div class="stepper-prev-line">${prevLine}</div>` : ''}
+    ${actionArea}
+  `;
+}
+
+function jumpToStepperSet(exId, i) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  st.currentSetIndex = i;
+  renderSetStepper(exId, st.ctx);
+}
+
+function navigateSet(exId, delta) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  const rows = getStepperRows(exId, st.ctx);
+  st.currentSetIndex = Math.max(0, Math.min(rows.length - 1, st.currentSetIndex + delta));
+  renderSetStepper(exId, st.ctx);
+}
+
+function stepperNudge(exId, which, delta) {
+  const input = document.getElementById(which === 'big' ? `stepper-big-${exId}` : `stepper-reps-${exId}`);
+  if (!input) return;
+  const next = Math.max(0, (parseFloat(input.value) || 0) + delta);
+  input.value = (next % 1 === 0) ? next : next.toFixed(1);
+  updateStepperLogLabel(exId);
+}
+
+function updateStepperLogLabel(exId) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  const btn = document.getElementById('stepper-' + exId)?.querySelector('.stepper-log-btn');
+  if (!btn) return;
+  const ctx = st.ctx;
+  const big = document.getElementById('stepper-big-' + exId)?.value || 0;
+  const reps = document.getElementById('stepper-reps-' + exId)?.value || 0;
+  const unit = ctx.isTime ? '' : (typeof unitLabel === 'function' ? unitLabel() : 'kg');
+  const alreadyDone = isSetDone(exId, st.currentSetIndex, ctx);
+  btn.lastChild.textContent = ` ${alreadyDone ? 'Update' : 'Log'} ${ctx.isTime ? (big || 0) + 's' : (big || 0) + unit + ' × ' + (reps || 0)}`;
+}
+
+function readStepperBigValues(exId, ctx) {
+  const big = parseFloat(document.getElementById('stepper-big-' + exId)?.value) || 0;
+  const reps = ctx.isTime ? 0 : (parseInt(document.getElementById('stepper-reps-' + exId)?.value) || 0);
+  const rpe = parseFloat(document.getElementById('stepper-rpe-' + exId)?.value) || null;
+  return { big, reps, rpe };
+}
+
+function writeIntoBackingInputs(exId, i, ctx, vals) {
+  let primary;
+  if (ctx.isTime) {
+    primary = getBackingInput(exId, i, 'duration', ctx);
+    if (primary) primary.value = vals.big;
+  } else {
+    primary = getBackingInput(exId, i, 'weight', ctx);
+    if (primary) primary.value = vals.big;
+    const r = getBackingInput(exId, i, 'reps', ctx);
+    if (r) r.value = vals.reps;
+  }
+  const rpe = getBackingInput(exId, i, 'rpe', ctx);
+  if (rpe) rpe.value = vals.rpe || '';
+  // dispatch a real input event so the existing delegated draft-autosave listener on
+  // #page-log picks this up exactly as if the user had typed into the backing input
+  primary?.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function logCurrentSet(exId) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  const ctx = st.ctx;
+  const n = st.currentSetIndex;
+  writeIntoBackingInputs(exId, n, ctx, readStepperBigValues(exId, ctx));
+  const rows = getStepperRows(exId, ctx);
+  const isLast = n === rows.length - 1;
+  if (!isLast) startRestTimer(exId, (ctx.ex && ctx.ex.restSeconds) || 90);
+  st.currentSetIndex = isLast ? n : n + 1;
+  renderSetStepper(exId, ctx);
+}
+
+function startRestTimer(exId, seconds) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  if (st.restIntervalId) clearInterval(st.restIntervalId);
+  st.restTotal = seconds; st.restRemaining = seconds;
+  st.restIntervalId = setInterval(() => {
+    st.restRemaining--;
+    if (st.restRemaining <= 0) { skipRest(exId); return; }
+    updateRestBarDisplay(exId);
+  }, 1000);
+  renderSetStepper(exId, st.ctx);
+}
+
+function updateRestBarDisplay(exId) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  const label = document.getElementById('stepper-' + exId)?.querySelector('.stepper-rest-label');
+  if (label) label.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> REST ${fmtRestTime(st.restRemaining)}`;
+}
+
+function adjustRest(exId, delta) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  st.restRemaining = Math.max(0, st.restRemaining + delta);
+  if (st.restRemaining <= 0) { skipRest(exId); return; }
+  updateRestBarDisplay(exId);
+}
+
+function skipRest(exId) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  if (st.restIntervalId) clearInterval(st.restIntervalId);
+  st.restIntervalId = null; st.restRemaining = 0; st.restTotal = 0;
+  renderSetStepper(exId, st.ctx);
+}
+
+function addSetFromStepper(exId) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  const ctx = st.ctx;
+  if (ctx.isSelf) addSelfSet(ctx.selfId, ctx.ex, ctx.isTime); else addSet(exId);
+  st.currentSetIndex = getStepperRows(exId, ctx).length - 1;
+  renderSetStepper(exId, ctx);
+}
+
+function removeStepperSet(exId) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  const ctx = st.ctx;
+  const rows = getStepperRows(exId, ctx);
+  if (rows.length <= 1) return;
+  const row = rows[st.currentSetIndex];
+  if (ctx.isSelf) {
+    if (typeof removeSelfSet === 'function') removeSelfSet(ctx.selfId, row);
+  } else {
+    const btn = row.querySelector('button.icon-btn');
+    if (btn) removeSet(btn, exId); else row.remove();
+  }
+  const newRows = getStepperRows(exId, ctx);
+  st.currentSetIndex = Math.min(st.currentSetIndex, Math.max(0, newRows.length - 1));
+  renderSetStepper(exId, ctx);
+}
+
+function toggleStepperRpe(exId) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  st.rpeOpen = !st.rpeOpen;
+  const body = document.getElementById('stepper-rpe-body-' + exId);
+  const toggle = body?.previousElementSibling;
+  body?.classList.toggle('open', st.rpeOpen);
+  toggle?.classList.toggle('open', st.rpeOpen);
 }
 
 function allExerciseNames() {
@@ -3385,6 +3787,7 @@ function addTemplateEx(section, ex) {
           <option value="time" ${ex?.type==='time'?'selected':''}>Time</option>
           <option value="bodyweight" ${ex?.type==='bodyweight'?'selected':''}>Bodyweight</option>
         </select>
+        <input type="number" id="trest-${id}" placeholder="90s rest" title="Rest timer between sets (defaults to 90s if left blank)" value="${ex?.restSeconds||''}" style="width:88px;">
         <button class="icon-btn" onclick="this.closest('[data-tpl-ex-id]').remove()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
@@ -3447,6 +3850,7 @@ function addTemplateExIntoSuperset(gid, ex) {
           <option value="time" ${ex?.type==='time'?'selected':''}>Time</option>
           <option value="bodyweight" ${ex?.type==='bodyweight'?'selected':''}>Bodyweight</option>
         </select>
+        <input type="number" id="trest-${id}" placeholder="90s rest" title="Rest timer between sets (defaults to 90s if left blank)" value="${ex?.restSeconds||''}" style="width:88px;">
         <button class="icon-btn" onclick="this.closest('[data-tpl-ex-id]').remove()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
@@ -3560,6 +3964,7 @@ function collectTemplateExBlocks(containerId) {
     if (!name) return null;
     const type = document.getElementById('ttype-'+id)?.value||'weight';
     const notes = (document.getElementById('tnotes-'+id)?.value||'').trim();
+    const restSeconds = parseInt(document.getElementById('trest-'+id)?.value)||null;
     const sets = [];
     document.querySelectorAll(`#tpl-sets-${id} > div`).forEach(row => {
       if (type==='time') sets.push({duration: parseInt(row.querySelector('[data-field="duration"]')?.value)||0});
@@ -3568,7 +3973,7 @@ function collectTemplateExBlocks(containerId) {
         targetReps: parseInt(row.querySelector('[data-field="targetReps"]')?.value)||0
       });
     });
-    return {name, type, notes, sets};
+    return {name, type, notes, restSeconds, sets};
   }
 
   [...container.children].forEach(child => {
@@ -4255,6 +4660,8 @@ function renderClientSelfPage(clientId) {
   `;
 }
 
+let selfExIdx = 0;
+
 function startClientSelfLog(clientId, templateId) {
   const el = document.getElementById('client-self-view');
   const c = db.clients.find(x=>x.id===clientId);
@@ -4263,32 +4670,40 @@ function startClientSelfLog(clientId, templateId) {
 
   const today = new Date().toISOString().slice(0,10);
   const lastSession = getLastTemplateSession(clientId, templateId);
+  selfExIdx = 0;
+  resetStepperState();
+  const selfStepperCtxs = []; // {selfId, ex, prevEx, isTime} - rendered after the HTML below is inserted into the DOM
 
   // Build exercise input blocks for each exercise in the template
   function buildSelfEx(ex) {
     const isTime = ex.type === 'time';
     const prevEx = getPrevSetData(lastSession, ex.name);
     const numSets = ex.sets?.length || 3;
+    const selfId = selfExIdx++;
     const rows = Array.from({length: numSets}, (_,i) => {
       const prev = prevEx?.sets?.[i];
       if (isTime) return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
         <span style="font-size:13px;color:var(--muted);width:28px;">S${i+1}</span>
-        <input type="number" placeholder="seconds" ${prev?`value="${prev.duration||''}"`:''} style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-ex="${ex.name}" data-set="${i}" data-field="duration">
+        <input type="number" placeholder="seconds" style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-id="${selfId}" data-set="${i}" data-field="duration">
         <span style="font-size:13px;color:var(--muted);">sec</span>
+        <input type="hidden" data-self-id="${selfId}" data-set="${i}" data-field="rpe">
       </div>`;
       return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <span style="font-size:13px;color:var(--muted);width:28px;">S${i+1}</span>
-        <input type="number" placeholder="kg" ${prev?`value="${prev.weight||''}"`:''} style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-ex="${ex.name}" data-set="${i}" data-field="weight">
+        <input type="number" placeholder="kg" ${prev?`value="${prev.weight||''}"`:''} style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-id="${selfId}" data-set="${i}" data-field="weight">
         <span style="font-size:13px;color:var(--muted);">×</span>
-        <input type="number" placeholder="reps" ${prev?`value="${prev.reps||''}"`:''} style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-ex="${ex.name}" data-set="${i}" data-field="reps">
+        <input type="number" placeholder="reps" style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-id="${selfId}" data-set="${i}" data-field="reps">
+        <input type="hidden" data-self-id="${selfId}" data-set="${i}" data-field="rpe">
       </div>`;
     }).join('');
     const prevInfo = prevEx && !isTime ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;"><span class="pill-tag">Last</span><span style="font-size:11px;color:var(--muted);">${(prevEx.sets||[]).map(s=>`${s.weight||0}kg×${s.reps||0}`).join(', ')}</span></div>` : '';
+    selfStepperCtxs.push({ selfId, ex, prevEx, isTime });
     return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:600;margin-bottom:${prevInfo?2:8}px;">${ex.name}</div>
       ${ex.notes?`<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:6px;">${ex.notes}</div>`:''}
       ${prevInfo}
-      ${rows}
+      <div id="self-sets-${selfId}" class="stepper-hidden">${rows}</div>
+      <div class="set-stepper" id="stepper-${selfId}"></div>
     </div>`;
   }
 
@@ -4324,6 +4739,48 @@ function startClientSelfLog(clientId, templateId) {
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:16px;font-size:16px;" onclick="saveClientSelfLog('${clientId}','${templateId}')">Save Session</button>
   `;
+
+  selfStepperCtxs.forEach(({ selfId, ex, prevEx, isTime }) => {
+    renderSetStepper(selfId, { ex, prevEx, isTime, isSelf: true, selfId });
+  });
+}
+
+function addSelfSet(selfId, ex, isTime) {
+  const wrap = document.getElementById('self-sets-' + selfId);
+  if (!wrap) return;
+  const i = wrap.children.length;
+  const row = document.createElement('div');
+  if (isTime) {
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:10px;';
+    row.innerHTML = `
+      <span style="font-size:13px;color:var(--muted);width:28px;">S${i+1}</span>
+      <input type="number" placeholder="seconds" style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-id="${selfId}" data-set="${i}" data-field="duration">
+      <span style="font-size:13px;color:var(--muted);">sec</span>
+      <input type="hidden" data-self-id="${selfId}" data-set="${i}" data-field="rpe">
+    `;
+  } else {
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:10px;';
+    row.innerHTML = `
+      <span style="font-size:13px;color:var(--muted);width:28px;">S${i+1}</span>
+      <input type="number" placeholder="kg" style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-id="${selfId}" data-set="${i}" data-field="weight">
+      <span style="font-size:13px;color:var(--muted);">×</span>
+      <input type="number" placeholder="reps" style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;" data-self-id="${selfId}" data-set="${i}" data-field="reps">
+      <input type="hidden" data-self-id="${selfId}" data-set="${i}" data-field="rpe">
+    `;
+  }
+  wrap.appendChild(row);
+}
+
+function removeSelfSet(selfId, rowEl) {
+  const wrap = document.getElementById('self-sets-' + selfId);
+  if (!wrap || wrap.children.length <= 1) return;
+  rowEl.remove();
+  [...wrap.children].forEach((row, i) => {
+    row.querySelector('[data-field="weight"],[data-field="duration"]')?.setAttribute('data-set', i);
+    row.querySelectorAll('[data-self-id]').forEach(inp => inp.setAttribute('data-set', i));
+    const label = row.querySelector('span');
+    if (label) label.textContent = 'S' + (i+1);
+  });
 }
 
 function saveClientSelfLog(clientId, templateId) {
@@ -4334,19 +4791,27 @@ function saveClientSelfLog(clientId, templateId) {
   const t = (db.templates||[]).find(x=>x.id===templateId);
   if (!t) return;
 
+  // Reset to 0 so the Nth call here lines up with the Nth call made when the page was
+  // built in startClientSelfLog, giving each exercise the same selfId on both sides.
+  selfExIdx = 0;
+
   function collectSelfEx(ex) {
     const isTime = ex.type === 'time';
+    const selfId = selfExIdx++;
+    // Row count is read from the DOM (not ex.sets.length) so sets added via the stepper's
+    // "+" circle - beyond the template's original count - are actually saved.
+    const rowCount = document.getElementById('self-sets-'+selfId)?.children.length || 0;
     const sets = [];
-    const inputs = document.querySelectorAll(`[data-self-ex="${ex.name}"]`);
-    const numSets = ex.sets?.length || 3;
-    for (let i = 0; i < numSets; i++) {
+    for (let i = 0; i < rowCount; i++) {
+      const q = f => document.querySelector(`[data-self-id="${selfId}"][data-set="${i}"][data-field="${f}"]`)?.value;
+      const rpe = parseFloat(q('rpe')) || null;
       if (isTime) {
-        const d = parseInt(document.querySelector(`[data-self-ex="${ex.name}"][data-set="${i}"][data-field="duration"]`)?.value)||0;
-        if (d) sets.push({type:'time', duration:d, rpe:null});
+        const d = parseInt(q('duration'))||0;
+        if (d) sets.push({type:'time', duration:d, rpe});
       } else {
-        const w = parseFloat(document.querySelector(`[data-self-ex="${ex.name}"][data-set="${i}"][data-field="weight"]`)?.value)||0;
-        const r = parseInt(document.querySelector(`[data-self-ex="${ex.name}"][data-set="${i}"][data-field="reps"]`)?.value)||0;
-        if (w||r) sets.push({weight:w, reps:r, rpe:null});
+        const w = parseFloat(q('weight'))||0;
+        const r = parseInt(q('reps'))||0;
+        if (w||r) sets.push({weight:w, reps:r, rpe});
       }
     }
     return {name:ex.name, exNotes:ex.notes||'', sets};
