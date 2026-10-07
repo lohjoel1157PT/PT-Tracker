@@ -2200,14 +2200,6 @@ function loadTemplate(clientId) {
       `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${set.weight||0}${unitLabel()} × ${set.reps||0} reps</strong></div>`
     ).join('') : '';
 
-    // cross-template best weight (name-based, benefits from rename standardisation)
-    const bestInfo = !isTime ? getBestWeightForExercise(clientId, displayName) : null;
-    const bestIsOther = bestInfo && bestInfo.maxWeight > lastMaxW && bestInfo.session?.id !== lastSession?.id;
-    const bestTemplateName = bestIsOther ? ((db.templates||[]).find(x=>x.id===bestInfo.session?.templateId)?.name || '') : '';
-    const bestRows = bestIsOther ? (bestInfo.ex.sets||[]).map((set,i)=>
-      `<div style="font-size:11px;color:var(--muted);padding:2px 0;">S${i+1}: <strong style="color:var(--text);">${set.weight||0}${unitLabel()} × ${set.reps||0} reps</strong></div>`
-    ).join('') : '';
-
     const prevBlock = prevEx ? `
       <div class="compare-card" style="margin-bottom:8px;">
         <div class="compare-row">
@@ -2223,14 +2215,6 @@ function loadTemplate(clientId) {
             ${secondPrevRows}
           </div>
           <span class="pill-tag warn">Deload</span>
-        </div>` : ''}
-        ${bestIsOther ? `
-        <div class="compare-row">
-          <div style="flex:1;">
-            <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Best overall${bestTemplateName?' ('+bestTemplateName+')':''} — ${fmtDate(bestInfo.session.date)}</div>
-            ${bestRows}
-          </div>
-          <span class="pill-tag positive">PR</span>
         </div>` : ''}
       </div>` : (plannedRows ? `
       <div class="card-gradient" style="padding:8px 10px;margin-bottom:8px;">
@@ -4056,18 +4040,6 @@ function getPrevSetData(session, exName) {
   if (!session) return null;
   const allEx = [...(session.warmup||[]), ...(session.exercises||[]).flat()];
   return allEx.find(e=>e.name.toLowerCase()===exName.toLowerCase()) || null;
-}
-
-function getBestWeightForExercise(clientId, exName) {
-  let bestWeight = -1, bestSession = null, bestEx = null;
-  db.sessions.filter(s=>s.clientId===clientId).forEach(s=>{
-    const allEx = [...(s.warmup||[]), ...(s.exercises||[]).flat()];
-    const ex = allEx.find(e=>e.name.toLowerCase()===exName.toLowerCase());
-    if (!ex) return;
-    const maxW = Math.max(...(ex.sets||[]).filter(set=>!set.type).map(set=>set.weight||0), 0);
-    if (maxW > bestWeight) { bestWeight = maxW; bestSession = s; bestEx = ex; }
-  });
-  return bestSession ? {session: bestSession, maxWeight: bestWeight, ex: bestEx} : null;
 }
 
 // ── TRAINING PLAN ─────────────────────────────────────────────────────────────
