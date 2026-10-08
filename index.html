@@ -431,7 +431,7 @@
 
     .stepper-log-btn { width:100%; background:var(--accent); color:#04332e; border:none; border-radius:14px; padding:15px; font-size:15px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; }
     .stepper-rest-bar { width:100%; display:flex; align-items:center; background:var(--accent-dim); border:1px solid var(--accent-dim-strong); border-radius:14px; padding:10px 14px; gap:10px; box-sizing:border-box; }
-    .stepper-rest-label { font-size:14px; font-weight:700; color:var(--accent); display:flex; align-items:center; gap:6px; flex:1; font-variant-numeric:tabular-nums; }
+    .stepper-rest-label { font-size:14px; font-weight:700; color:var(--accent); display:flex; align-items:center; gap:6px; flex:1; font-variant-numeric:tabular-nums; cursor:pointer; }
     .stepper-rest-adj { background:var(--surface); border:1px solid var(--border); color:var(--text); font-size:12px; font-weight:600; padding:5px 9px; border-radius:20px; cursor:pointer; flex-shrink:0; }
     .stepper-skip-btn { background:none; border:none; color:var(--accent); cursor:pointer; display:flex; align-items:center; flex-shrink:0; }
     .stepper-done-msg { text-align:center; font-size:13px; color:var(--muted); padding:10px; }
@@ -3166,7 +3166,7 @@ function renderSetStepper(exId, ctx) {
     const firstPending = done.findIndex(d => !d);
     stepperState.set(exId, {
       currentSetIndex: firstPending === -1 ? rows.length - 1 : firstPending,
-      restRemaining: 0, restTotal: 0, restIntervalId: null, rpeOpen: false, ctx
+      restEndAt: null, restTotal: 0, restIntervalId: null, editingRest: false, rpeOpen: false, ctx
     });
   } else {
     stepperState.get(exId).ctx = ctx;
@@ -3241,9 +3241,11 @@ function buildStepperHtml(exId, st, rows) {
     </div>`;
 
   const alreadyDone = isSetDone(exId, n, ctx);
-  const actionArea = (st.restIntervalId || st.restRemaining > 0) ? `
+  const restIsActive = !!st.restEndAt && (Math.round((st.restEndAt - Date.now()) / 1000) > 0);
+  const restRemainingNow = restIsActive ? Math.round((st.restEndAt - Date.now()) / 1000) : 0;
+  const actionArea = restIsActive ? `
     <div class="stepper-rest-bar">
-      <span class="stepper-rest-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> REST ${fmtRestTime(st.restRemaining)}</span>
+      <span class="stepper-rest-label" id="rest-label-${exId}" onclick="startEditRest(${exId})" title="Tap to edit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> REST ${fmtRestTime(restRemainingNow)}</span>
       <button type="button" class="stepper-rest-adj" onclick="adjustRest(${exId},-15)">−15</button>
       <button type="button" class="stepper-rest-adj" onclick="adjustRest(${exId},15)">+15</button>
       <button type="button" class="stepper-skip-btn" onclick="skipRest(${exId})" title="Skip rest"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5 4l10 8-10 8V4zM17 4h2v16h-2z"/></svg></button>
@@ -3351,41 +3353,88 @@ function logCurrentSet(exId) {
   renderSetStepper(exId, ctx);
 }
 
+// Rest timer is anchored to a wall-clock end timestamp (restEndAt), not a decremented
+// counter, so it reads correctly even if setInterval ticks get throttled or paused while
+// the tab/app is backgrounded (iOS/mobile browsers do this aggressively). The 1s interval
+// just triggers a redraw; the actual remaining time is always recomputed from Date.now().
 function startRestTimer(exId, seconds) {
   const st = stepperState.get(exId);
   if (!st) return;
   if (st.restIntervalId) clearInterval(st.restIntervalId);
-  st.restTotal = seconds; st.restRemaining = seconds;
-  st.restIntervalId = setInterval(() => {
-    st.restRemaining--;
-    if (st.restRemaining <= 0) { skipRest(exId); return; }
-    updateRestBarDisplay(exId);
-  }, 1000);
+  st.restTotal = seconds;
+  st.restEndAt = Date.now() + seconds * 1000;
+  st.restIntervalId = setInterval(() => tickRest(exId), 1000);
   renderSetStepper(exId, st.ctx);
+}
+
+function tickRest(exId) {
+  const st = stepperState.get(exId);
+  if (!st || !st.restEndAt) return;
+  if (Date.now() >= st.restEndAt) { skipRest(exId); return; }
+  updateRestBarDisplay(exId);
 }
 
 function updateRestBarDisplay(exId) {
   const st = stepperState.get(exId);
-  if (!st) return;
-  const label = document.getElementById('stepper-' + exId)?.querySelector('.stepper-rest-label');
-  if (label) label.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> REST ${fmtRestTime(st.restRemaining)}`;
+  if (!st || !st.restEndAt || st.editingRest) return;
+  const remaining = Math.max(0, Math.round((st.restEndAt - Date.now()) / 1000));
+  const label = document.getElementById('rest-label-' + exId);
+  if (label) label.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> REST ${fmtRestTime(remaining)}`;
 }
 
 function adjustRest(exId, delta) {
   const st = stepperState.get(exId);
-  if (!st) return;
-  st.restRemaining = Math.max(0, st.restRemaining + delta);
-  if (st.restRemaining <= 0) { skipRest(exId); return; }
+  if (!st || !st.restEndAt) return;
+  st.restEndAt += delta * 1000;
+  if (Date.now() >= st.restEndAt) { skipRest(exId); return; }
   updateRestBarDisplay(exId);
+}
+
+// Tap-to-edit: lets you type an exact rest duration instead of only nudging by 15s.
+function startEditRest(exId) {
+  const st = stepperState.get(exId);
+  if (!st || !st.restEndAt) return;
+  const remaining = Math.max(0, Math.round((st.restEndAt - Date.now()) / 1000));
+  const label = document.getElementById('rest-label-' + exId);
+  if (!label) return;
+  st.editingRest = true;
+  label.innerHTML = `<input type="number" min="0" inputmode="numeric" id="rest-edit-input-${exId}" value="${remaining}" style="width:56px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;font-weight:700;padding:3px 6px;" onclick="event.stopPropagation()">s`;
+  const input = document.getElementById('rest-edit-input-' + exId);
+  input.focus(); input.select();
+  input.addEventListener('blur', () => commitRestEdit(exId));
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
+}
+
+function commitRestEdit(exId) {
+  const st = stepperState.get(exId);
+  if (!st) return;
+  st.editingRest = false;
+  const input = document.getElementById('rest-edit-input-' + exId);
+  const seconds = input ? Math.max(0, parseInt(input.value) || 0) : 0;
+  if (seconds <= 0) { skipRest(exId); return; }
+  st.restEndAt = Date.now() + seconds * 1000;
+  renderSetStepper(exId, st.ctx);
 }
 
 function skipRest(exId) {
   const st = stepperState.get(exId);
   if (!st) return;
   if (st.restIntervalId) clearInterval(st.restIntervalId);
-  st.restIntervalId = null; st.restRemaining = 0; st.restTotal = 0;
+  st.restIntervalId = null; st.restEndAt = null; st.restTotal = 0; st.editingRest = false;
   renderSetStepper(exId, st.ctx);
 }
+
+// Mobile/background tabs throttle or pause setInterval entirely, so a rest timer can look
+// "stopped" after switching apps. Re-sync every active timer the instant the tab becomes
+// visible again, using the same wall-clock restEndAt — correcting the display immediately
+// and auto-advancing any timer that finished while the app was backgrounded.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  stepperState.forEach((st, exId) => {
+    if (!st.restEndAt || st.editingRest) return;
+    if (Date.now() >= st.restEndAt) skipRest(exId); else updateRestBarDisplay(exId);
+  });
+});
 
 function addSetFromStepper(exId) {
   const st = stepperState.get(exId);
